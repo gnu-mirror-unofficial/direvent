@@ -72,7 +72,6 @@ if [ -n "$po_only" ]; then
 fi    
 
 test -d am || mkdir am
-git submodule init
-git submodule update
+git submodule update --init --recursive
 autoreconf -f -i -s
     
