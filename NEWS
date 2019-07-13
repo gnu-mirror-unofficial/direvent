@@ -1,15 +1,15 @@
-direvent -- history of user-visible changes. 2016-08-25
-Copyright (C) 2012-2016 Sergey Poznyakoff
+direvent -- history of user-visible changes. 2019-07-13
+Copyright (C) 2012-2019 Sergey Poznyakoff
 See the end of file for copying conditions.
 
 Please send direvent bug reports to <bug-direvent@gnu.org.ua>
 
-Version 5.1.90 (Git)
+Version 5.2, 2019-07-13
 
 * The path statement can refer to a regular file.
 
-Prior versions of direvent required that the argument to the "path"
-statement refer to an existing directory.  This requirement is now
+Prior versions of direvent required the argument to the "path"
+statement to refer to an existing directory.  This requirement is now
 lifted.  The pathname can refer to any type of file (not only a
 directory).  Moreover, the file is not required to exist.  If it does
 not exist, direvent will set up an auxiliary watcher (called a
@@ -151,7 +151,7 @@ Initial release
 =========================================================================
 Copyright information:
 
-Copyright (C) 2012-2016 Sergey Poznyakoff
+Copyright (C) 2012-2019 Sergey Poznyakoff
 
    Permission is granted to anyone to make or distribute verbatim copies
    of this document as received, in any medium, provided that the
