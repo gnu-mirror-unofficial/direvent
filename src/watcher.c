@@ -290,6 +290,13 @@ watchpoint_init(struct watchpoint *wpt)
 		mask.sys_mask |= hp->ev_mask.sys_mask;
 		mask.gen_mask |= hp->ev_mask.gen_mask;
 	}
+
+	if (wpt->depth) {
+		event_mask ev_mask;
+		getevt("create", &ev_mask);
+		mask.gen_mask |= ev_mask.gen_mask;
+		mask.sys_mask |= ev_mask.sys_mask;
+	}
 	
 	wd = sysev_add_watch(wpt, mask);
 	if (wd == -1) {
