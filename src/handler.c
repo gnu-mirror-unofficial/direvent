@@ -58,7 +58,7 @@ handler_free(struct handler *hp)
 static void
 handler_unref(struct handler *hp)
 {
-	if (hp && --hp->refcnt) {
+	if (hp && --hp->refcnt == 0) {
 		handler_free(hp);
 		free(hp);
 	}
