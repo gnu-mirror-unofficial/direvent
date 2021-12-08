@@ -1,0 +1,68 @@
+# This file is part of Direvent testsuite. -*- Autotest -*-
+# Copyright (C) 2021 Sergey Poznyakoff
+#
+# Direvent is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3, or (at your option)
+# any later version.
+#
+# Direvent is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Direvent.  If not, see <http://www.gnu.org/licenses/>.
+
+AT_SETUP([Create recursive with depth limit])
+AT_KEYWORDS([create createrec createrec2])
+
+# Check working recursion depth limit.
+# It was fixed in commit c1bf7afa248ae14e5bab465c6797111baf6e9996.
+
+AT_DIREVENT_TEST([
+debug 10;
+watcher {
+	path $cwd/dir recursive 2;
+	event write;
+	command "$cwd/handler.sh >> $cwd/handler.log";
+	option (shell,stdout,stderr);
+}
+],
+[cd dir
+mkdir a
+sleep 1
+> a/file
+mkdir a/b
+sleep 1
+> a/b/file
+mkdir a/b/c
+sleep 1
+> a/b/c/file
+sleep 1
+touch sentinel
+],
+[mkdir dir
+AT_DATA([handler.sh],
+[#!/bin/sh
+if test -f $DIREVENT_FILE; then
+  echo "`pwd -P`/$DIREVENT_FILE created" 
+  if test $DIREVENT_FILE = sentinel; then
+     /bin/kill -HUP $DIREVENT_SELF_TEST_PID
+  fi
+fi
+exit 0
+])
+chmod +x handler.sh
+],
+[ls dir/a/b/c/file
+sed -e "s|^$cwd/||" handler.log
+],
+[0],
+[dir/a/b/c/file
+dir/a/file created
+dir/a/b/file created
+dir/sentinel created
+])
+
+AT_CLEANUP

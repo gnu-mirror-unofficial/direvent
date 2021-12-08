@@ -43,6 +43,7 @@ TESTSUITE_AT = \
   cmdexp.at\
   create.at\
   createrec.at\
+  createrec2.at\
   delete.at\
   env00.at\
   env01.at\
