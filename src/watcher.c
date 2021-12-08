@@ -220,6 +220,7 @@ sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 		}
 		grecs_list_append(watchpoint_gc_list, wp);
 	}
+
 	return 0;
 }
 
@@ -313,12 +314,11 @@ watchpoint_init(struct watchpoint *wpt)
 static int watch_subdirs(struct watchpoint *parent, int notify);
 
 int
-subwatcher_create(struct watchpoint *parent, const char *dirname,
-		  int notify)
+subwatcher_create(struct watchpoint *parent, const char *dirname, int notify)
 {
 	struct watchpoint *wpt;
 	int inst;
-	
+
 	wpt = watchpoint_install(dirname, &inst);
 	if (!inst)
 		return -1;
@@ -345,12 +345,12 @@ subwatcher_create(struct watchpoint *parent, const char *dirname,
 void
 deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name)
 {
-	event_mask m = { GENEV_CREATE, 0 };
+	event_mask m = { GENEV_CREATE|GENEV_OOB, 0 };
 	struct handler *hp;
 	handler_iterator_t itr;
-	
+	debug(1, ("delivering OOB CREATE for %s", name));
 	for_each_handler(wp, itr, hp) {
-		if (handler_matches_event(hp, gen, GENEV_CREATE, name))
+		if (handler_matches_event(hp, gen, GENEV_CREATE|GENEV_WRITE, name))
 			hp->run(wp, &m, dirname, name, hp->data);
 	}
 }
@@ -364,7 +364,8 @@ deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name)
    depth decreased by one, thus eventually cutting off creation of new
    watchers.
 
-   Return 0 on success, -1 on error.
+   Return positive number if the watcher has been created, 0 if the watcher
+   is not needed, and -1 on error.
 */
 int
 check_new_watcher(const char *dir, const char *name)
@@ -429,7 +430,7 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	filemask = sysev_filemask(parent);
 	if (parent->depth)
 		filemask |= S_IFDIR;
-	if (!filemask)
+	if (filemask == 0 && !notify)
 		return 0;
 	
 	dir = opendir(parent->dirname);
@@ -442,7 +443,7 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	while (ent = readdir(dir)) {
 		struct stat st;
 		char *dirname;
-		
+
 		if (ent->d_name[0] == '.' &&
 		    (ent->d_name[1] == 0 ||
 		     (ent->d_name[1] == '.' && ent->d_name[2] == 0)))
@@ -463,6 +464,7 @@ watch_subdirs(struct watchpoint *parent, int notify)
 			if (notify)
 				deliver_ev_create(parent, parent->dirname,
 						  ent->d_name);
+
 			if (st.st_mode & filemask) {
 				int rc = subwatcher_create(parent, dirname,
 							   notify);

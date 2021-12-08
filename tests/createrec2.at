@@ -31,15 +31,11 @@ watcher {
 ],
 [cd dir
 mkdir a
-sleep 1
 > a/file
 mkdir a/b
-sleep 1
 > a/b/file
 mkdir a/b/c
-sleep 1
 > a/b/c/file
-sleep 1
 touch sentinel
 ],
 [mkdir dir
