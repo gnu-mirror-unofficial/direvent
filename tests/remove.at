@@ -25,10 +25,6 @@ mkdir dir
 cat > test.conf <<EOT
 pidfile $pidfile;
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:create;
-}
 watcher {
 	path $cwd/dir;
 	event create;
@@ -37,7 +33,7 @@ watcher {
 }
 EOT
 
-direvent -lnotice test.conf || exit 1
+direvent -lnotice test.conf 2>direvent.log || exit 1
 waitfile $pidfile 2
 > dir/file
 waitfile $outfile 6 || exit 2

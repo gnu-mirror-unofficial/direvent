@@ -19,10 +19,6 @@ AT_KEYWORDS([special file])
 
 AT_DIREVENT_TEST_UNQUOTED([
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:create;
-}
 watcher {
 	path $cwd/file;
 	event (create,write,delete);

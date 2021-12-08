@@ -19,10 +19,6 @@ AT_KEYWORDS([special sent sentinel])
 
 AT_DIREVENT_TEST_UNQUOTED([
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:create;
-}
 watcher {
 	path $cwd/dir/sub;
 	file "foo";
@@ -60,6 +56,7 @@ DIREVENT_GENEV_CODE=1
 DIREVENT_GENEV_NAME=create
 # End
 ],
+[NOTICE],
 [direvent: [[NOTICE]] installing CREATE sentinel for $cwd/dir/sub
 direvent: [[NOTICE]] installing CREATE sentinel for $cwd/dir
 ])

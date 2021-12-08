@@ -19,10 +19,6 @@ AT_KEYWORDS([create createrec])
 
 AT_DIREVENT_TEST([
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:create-recursive;
-}
 watcher {
 	path $cwd/dir recursive;
 	event create;

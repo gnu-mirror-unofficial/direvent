@@ -19,10 +19,6 @@ AT_KEYWORDS([environ env00])
 
 AT_DIREVENT_TEST([
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:write;
-}
 watcher {
 	path $cwd/dir;
 	event write;

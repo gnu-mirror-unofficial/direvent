@@ -19,10 +19,6 @@ AT_KEYWORDS([create fname glob glob01])
 
 AT_DIREVENT_TEST([
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:create;
-}
 watcher {
 	path $cwd/dir;
 	event create;

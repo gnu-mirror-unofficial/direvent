@@ -19,10 +19,6 @@ AT_KEYWORDS([delete])
 
 AT_DIREVENT_TEST([
 debug 10;
-syslog {
-	facility ${TESTSUITE_FACILITY:-local0};
-	tag direvent-test:delete;
-}
 watcher {
 	path $cwd/dir;
 	event delete;
