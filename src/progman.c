@@ -403,13 +403,23 @@ runcmd(const char *cmd, char **envhint, event_mask *event, const char *file,
 		kve[i++] = "sysev_name";
 		kve[i++] = estrdup(buf);
 	}
-	p = trans_toktostr(genev_transtab, event->gen_mask);
-	if (p) {
-		snprintf(buf, sizeof buf, "%d", event->gen_mask);
-		kve[i++] = "genev_code";
-		kve[i++] = estrdup(buf);
+
+	snprintf(buf, sizeof buf, "%d", event->gen_mask);
+	kve[i++] = "genev_code";
+	kve[i++] = estrdup(buf);
+	
+	q = buf;
+	for (p = trans_tokfirst(genev_transtab, event->gen_mask, &j); p;
+	     p = trans_toknext(genev_transtab, event->gen_mask, &j)) {
+		if (q > buf)
+			*q++ = ' ';
+		while (*p)
+			*q++ = *p++;
+	}
+	*q = 0;	
+	if (q > buf) {
 		kve[i++] = "genev_name";
-		kve[i++] = p;
+		kve[i++] = estrdup(buf);;
 	}
 	kve[i++] = 0;
 
