@@ -36,7 +36,6 @@
 #define GENEV_WRITE   0x02
 #define GENEV_ATTRIB  0x04
 #define GENEV_DELETE  0x08
-#define GENEV_OOB     0x10
 
 /* Handler flags. */
 #define HF_NOWAIT  0x01   /* Don't wait for termination */

@@ -127,7 +127,6 @@ struct transtab genev_transtab[] = {
 	{ "write",  GENEV_WRITE  },
 	{ "attrib", GENEV_ATTRIB },
 	{ "delete", GENEV_DELETE },
-	{ "oob",    GENEV_OOB },
 	{ NULL }
 };
 

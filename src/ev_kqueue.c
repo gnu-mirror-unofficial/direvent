@@ -172,7 +172,8 @@ check_created(struct watchpoint *dp)
 		} else if (st.st_ctime > dp->file_ctime ||
 			   !watchpoint_lookup(pathname)) {
 			deliver_ev_create(dp, dp->dirname, ent->d_name);
-			subwatcher_create(dp, pathname, 1);
+			if (dp->depth)
+				subwatcher_create(dp, pathname, 1);
 			dp->file_ctime = st.st_ctime;
 		}
 		free(pathname);

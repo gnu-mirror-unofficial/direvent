@@ -35,9 +35,9 @@ sleep 10
 exit 21
 EOT
 chmod +x selftest.sh
-direvent -lnotice -f --self-test $cwd/selftest.sh test.conf dnl
+direvent -ldebug -f --self-test $cwd/selftest.sh test.conf dnl
  2>direvent.log || exit $?
-m4_if([$8],[],[],[sed -n m4_foreach([i], [$8], [-e '/@<:@i@:>@/p']) direvent.log >&2])
+m4_if([$8],[],[],[sed -n m4_foreach([i], [$8], [-e '/\@<:@i\@:>@/p']) direvent.log >&2])
 $5
 ],
 [$6],

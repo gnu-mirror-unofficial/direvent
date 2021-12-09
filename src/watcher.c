@@ -345,10 +345,10 @@ subwatcher_create(struct watchpoint *parent, const char *dirname, int notify)
 void
 deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name)
 {
-	event_mask m = { GENEV_CREATE|GENEV_OOB, 0 };
+	event_mask m = { GENEV_CREATE, 0 };
 	struct handler *hp;
 	handler_iterator_t itr;
-	debug(1, ("delivering OOB CREATE for %s", name));
+
 	for_each_handler(wp, itr, hp) {
 		if (handler_matches_event(hp, gen, GENEV_CREATE|GENEV_WRITE, name))
 			hp->run(wp, &m, dirname, name, hp->data);
@@ -430,6 +430,8 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	filemask = sysev_filemask(parent);
 	if (parent->depth)
 		filemask |= S_IFDIR;
+	else
+		filemask &= ~S_IFDIR;
 	if (filemask == 0 && !notify)
 		return 0;
 	

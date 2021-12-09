@@ -186,11 +186,12 @@ eventconf_flush(grecs_locus_t *loc)
 		wpt = watchpoint_install(pe->path, &isnew);
 		if (!wpt)
 			abort();
-		if (!isnew && wpt->depth != pe->depth)
+		if (isnew)
+			wpt->depth = pe->depth;
+		else if (wpt->depth != pe->depth)
 			grecs_error(loc, 0,
 				    _("%s: recursion depth does not match previous definition"),
 				    pe->path);
-		wpt->depth = pe->depth;
 		handler_list_append(wpt->handler_list, hp);
 	}
 	grecs_list_free(eventconf.pathlist);
