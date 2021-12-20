@@ -92,10 +92,18 @@ struct handler {
 	event_handler_fn run;
 	handler_free_fn free;
 	void *data;
+	int notify_always;
 };
 
 typedef struct handler_list *handler_list_t;
 typedef struct handler_iterator *handler_iterator_t;
+
+struct recent_head {
+	struct watchpoint *prev;
+	struct watchpoint *next;
+	struct grecs_symtab *names;
+	struct timeval tv;
+};
 
 /* Watchpoint links the directory being monitored and a list of
    handlers for various events: */
@@ -112,6 +120,7 @@ struct watchpoint {
 						separator in dirname (see
 						split_pathname,
 						unsplit_pathname */
+	struct recent_head rhead;
 #if USE_IFACE == IFACE_KQUEUE
 	mode_t file_mode;
 	time_t file_ctime;
@@ -227,12 +236,12 @@ void setup_watchers(void);
 void shutdown_watchers(void);
 
 struct watchpoint *watchpoint_lookup(const char *dirname);
-int check_new_watcher(const char *dir, const char *name);
 struct watchpoint *watchpoint_install(const char *path, int *pnew);
 struct watchpoint *watchpoint_install_ptr(struct watchpoint *dw);
 void watchpoint_suspend(struct watchpoint *dwp);
 void watchpoint_destroy(struct watchpoint *dwp);
 int watchpoint_install_sentinel(struct watchpoint *dwp);
+int watchpoint_attach_directory_sentinel(struct watchpoint *wpt);
 
 int watch_pathname(struct watchpoint *parent, const char *dirname, int isdir, int notify);
 
@@ -241,9 +250,18 @@ void unsplit_pathname(struct watchpoint *dp);
 
 void ev_log(int flags, struct watchpoint *dp);
 void deliver_ev_create(struct watchpoint *dp,
-		       const char *dirname, const char *filename);
+		       const char *dirname, const char *filename,
+		       int notify);
 int subwatcher_create(struct watchpoint *parent, const char *dirname,
 		      int notify);
+
+void watchpoint_recent_init(struct watchpoint *wp);
+void watchpoint_recent_deinit(struct watchpoint *wp);
+int watchpoint_recent_lookup(struct watchpoint *wp, char const *name);
+int watchpoint_recent_cleanup(void);
+
+#define WATCHPOINT_RECENT_TTL 1
+
 
 struct handler *handler_itr_first(struct watchpoint *dp,
 				       handler_iterator_t *itr);
@@ -259,9 +277,10 @@ struct handler *handler_itr_current(handler_iterator_t itr);
 handler_list_t handler_list_create(void);
 handler_list_t handler_list_copy(handler_list_t);
 void handler_list_unref(handler_list_t hlist);
-void handler_list_append(handler_list_t hlist,
-				  struct handler *hp);
+void handler_list_append(handler_list_t hlist, struct handler *hp);
+void handler_list_append_cow(handler_list_t *phlist, struct handler *hp);
 size_t handler_list_remove(handler_list_t hlist, struct handler *hp);
+size_t handler_list_remove_cow(handler_list_t *phlist, struct handler *hp);
 size_t handler_list_size(handler_list_t hlist);
 
 struct process *process_lookup(pid_t pid);

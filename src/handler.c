@@ -196,12 +196,38 @@ handler_list_unref(handler_list_t hlist)
 		}
 	}
 }
-		
+
+static void
+handler_list_dup(handler_list_t *phlist)
+{
+	handler_list_t hlist = handler_list_create();
+	struct grecs_list_entry *ent;
+	//FIXME: Use iterator?
+	//FIXME: Optimization: check for ent->data==hp and skip it
+	for (ent = (*phlist)->list->head; ent; ent = ent->next) {
+		handler_list_append(hlist, ent->data);
+	}
+	*phlist = hlist;
+}
+
 void
 handler_list_append(handler_list_t hlist, struct handler *hp)
 {
 	handler_ref(hp);
 	grecs_list_append(hlist->list, hp);
+}
+
+void
+handler_list_append_cow(handler_list_t *phlist, struct handler *hp)
+{
+	handler_list_t hlist = *phlist;
+	if (!hlist) {
+		hlist = *phlist = handler_list_create();
+	} else if (hlist->refcnt > 1) {
+		handler_list_dup(phlist);
+		hlist = *phlist;
+	}
+	handler_list_append(hlist, hp);
 }
 
 size_t
@@ -214,6 +240,40 @@ handler_list_remove(handler_list_t hlist, struct handler *hp)
 	if (!ep)
 		abort();
 
+	if (hlist->itr_chain) {
+		struct handler_iterator *itr;
+
+		for (itr = hlist->itr_chain; itr; itr = itr->next)
+			if (itr->ent == ep) {
+				itr->ent = ep->next;
+				itr->advanced = 1;
+			}
+	}
+	
+	grecs_list_remove_entry(hlist->list, ep);
+	return grecs_list_size(hlist->list);
+}
+
+size_t
+handler_list_remove_cow(handler_list_t *phlist, struct handler *hp)
+{
+	handler_list_t hlist = *phlist;
+	struct grecs_list_entry *ep;
+
+	if (!hlist)
+		return 0;
+	else if (hlist->refcnt > 1) {
+		handler_list_dup(phlist);
+		hlist = *phlist;
+	}
+	
+	for (ep = hlist->list->head; ep; ep = ep->next)
+		if (ep->data == hp)
+			break;
+	if (!ep)
+		abort();
+
+		
 	if (hlist->itr_chain) {
 		struct handler_iterator *itr;
 

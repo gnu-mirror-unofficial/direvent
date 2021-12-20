@@ -62,14 +62,7 @@ sysev_init()
 int
 sysev_filemask(struct watchpoint *dp)
 {
-	struct handler *h;
-	handler_iterator_t itr;
-
-	for_each_handler(dp, itr, h) {
-		if (h->ev_mask.sys_mask)
-			return S_IFMT;
-	}
-	return 0;
+	return S_IFMT;
 }
 
 int
@@ -171,9 +164,7 @@ check_created(struct watchpoint *dp)
 		   a watcher for it. */
 		} else if (st.st_ctime > dp->file_ctime ||
 			   !watchpoint_lookup(pathname)) {
-			deliver_ev_create(dp, dp->dirname, ent->d_name);
-			if (dp->depth)
-				subwatcher_create(dp, pathname, 1);
+			deliver_ev_create(dp, dp->dirname, ent->d_name, 1);
 			dp->file_ctime = st.st_ctime;
 		}
 		free(pathname);

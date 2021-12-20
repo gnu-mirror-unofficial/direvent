@@ -17,6 +17,7 @@
 #include "direvent.h"
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 void
 watchpoint_ref(struct watchpoint *wpt)
@@ -29,6 +30,7 @@ watchpoint_unref(struct watchpoint *wpt)
 {
 	if (--wpt->refcnt)
 		return;
+	watchpoint_recent_deinit(wpt);
 	free(wpt->dirname);
 	handler_list_unref(wpt->handler_list);
 	free(wpt);
@@ -74,7 +76,101 @@ wpref_free(void *p)
 	watchpoint_unref(wpref->wpt);
 	free(wpref);
 }
+
+struct watchpoint *recent_head, *recent_tail;
 
+static void
+watchpoint_recent_link(struct watchpoint *wp)
+{
+	wp->rhead.next = NULL;
+	wp->rhead.prev = recent_tail;
+	if (recent_tail)
+		recent_tail->rhead.next = wp;
+	else
+		recent_head = wp;
+	recent_head = wp;
+}
+
+static void
+watchpoint_recent_unlink(struct watchpoint *wp)
+{
+	struct watchpoint *p;
+	
+	if ((p = wp->rhead.prev) != NULL)
+		p->rhead.next = wp->rhead.next;
+	else
+		recent_head = wp->rhead.next;
+	if ((p = wp->rhead.next) != NULL)
+		p->rhead.prev = wp->rhead.prev;
+	else
+		recent_tail = wp->rhead.prev;
+}
+
+void
+watchpoint_recent_deinit(struct watchpoint *wp)
+{
+	if (wp->rhead.names) {
+		debug(1, ("%s: recent status expired", wp->dirname));
+		watchpoint_recent_unlink(wp);
+		grecs_symtab_free(wp->rhead.names);
+		wp->rhead.names = NULL;
+	}
+}
+
+void
+watchpoint_recent_init(struct watchpoint *wp)
+{
+	gettimeofday(&wp->rhead.tv, NULL);
+	wp->rhead.names = grecs_symtab_create_default(sizeof(struct grecs_syment));
+	if (!wp->rhead.names) {
+		diag(LOG_CRIT, _("not enough memory"));
+		exit(1);
+	}
+	watchpoint_recent_link(wp);
+	alarm(1);
+}
+
+int
+watchpoint_recent_lookup(struct watchpoint *wp, char const *name)
+{
+	int install = 1;
+	if (wp->rhead.names) {
+		struct grecs_syment key;
+		struct grecs_syment *ent;
+
+		key.name = (char*) name;
+		ent = grecs_symtab_lookup_or_install(wp->rhead.names, &key,
+						     &install);
+		if (!ent) {
+			diag(LOG_CRIT, _("not enough memory"));
+			exit(1);
+		}
+		debug(1, ("watchpoint_recent_lookup: %s %s: %d",
+			  wp->dirname, name, !install));
+	}
+	return !install;
+}
+
+int
+watchpoint_recent_cleanup(void)
+{
+	struct timeval now;
+	struct watchpoint *wp;
+	int d = 0;
+	
+	gettimeofday(&now, NULL);
+	for (wp = recent_head; wp; ) {
+		struct watchpoint *next = wp->rhead.next;
+		d = now.tv_sec - wp->rhead.tv.tv_sec;
+		if (d > WATCHPOINT_RECENT_TTL)
+			watchpoint_recent_deinit(wp);
+		else
+			break;
+		wp = next;
+	}
+	return d;
+}
+
 struct grecs_symtab *nametab;
 
 struct watchpoint *
@@ -171,7 +267,7 @@ watchpoint_remove(const char *dirname)
 
 	if (!nametab)
 		return;
-	
+
 	wpkey.dirname = (char*) dirname;
 	key.wpt = &wpkey;
 	grecs_symtab_remove(nametab, &key);
@@ -181,6 +277,7 @@ void
 watchpoint_destroy(struct watchpoint *wpt)
 {
 	debug(1, (_("removing watcher %s"), wpt->dirname));
+	watchpoint_recent_deinit(wpt);//FIXME: This should also reset the timer
 	sysev_rm_watch(wpt);
 	watchpoint_remove(wpt->dirname);
 }
@@ -208,10 +305,11 @@ sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 {
 	struct sentinel *sentinel = data;
 	struct watchpoint *wpt = sentinel->watchpoint;
-	
+
+	debug(1, ("watchpoint_init: from sentinel (%d)", __LINE__));
 	watchpoint_init(wpt);
 	watchpoint_install_ptr(wpt);
-	deliver_ev_create(wpt, dirname, file);
+	deliver_ev_create(wpt, dirname, file, 1);
 	
 	if (handler_list_remove(wp->handler_list, sentinel->hp) == 0) {
 		if (!watchpoint_gc_list) {
@@ -256,14 +354,113 @@ watchpoint_install_sentinel(struct watchpoint *wpt)
 	watchpoint_ref(wpt);
 	
 	hp->data = sentinel;
+	hp->notify_always = 1;
 	
 	filpatlist_add_exact(&hp->fnames, filename);
 	handler_list_append(sent->handler_list, hp);
 	unsplit_pathname(wpt);
 	diag(LOG_NOTICE, _("installing CREATE sentinel for %s"), wpt->dirname);
+	debug(1, ("watchpoint_init: from install_sentinel (%d)", __LINE__));
 	return watchpoint_init(sent);
 }
+
+static int watch_subdirs(struct watchpoint *parent, int notify);
+
+static int
+directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
+		       const char *dirname, const char *file, void *data)
+{
+	struct sentinel *sentinel = data;
+	struct watchpoint *parent = sentinel->watchpoint;
+	char *filename;
+	struct stat st;
+	int filemask = sysev_filemask(parent);
+	struct watchpoint *wpt;
+	int rc = 0;
+
+	//FIXME: Do that in sysev_filemask?  See also watch_subdirs
+	if (parent->depth)
+		filemask |= S_IFDIR;
+	else
+		filemask &= ~S_IFDIR;
 	
+	filename = mkfilename(dirname, file);
+	if (!filename) {
+		diag(LOG_ERR,
+		     _("cannot create watcher %s/%s: not enough memory"),
+		     dirname, file);
+		return -1;
+	}
+
+	if (stat(filename, &st)) {
+		diag(LOG_ERR,
+		     _("cannot create watcher %s, stat failed: %s"),
+		     filename, strerror(errno));
+		rc = -1;
+	} else if (st.st_mode & filemask) {
+		int inst;
+
+		wpt = watchpoint_install(filename, &inst);
+		if (!inst)
+			rc = -1;
+		else {
+			if ((wpt->depth = parent->depth) > 0)
+				wpt->depth--;
+			
+			wpt->handler_list = handler_list_copy(parent->handler_list);
+			if (wpt->depth)
+				watchpoint_attach_directory_sentinel(wpt);
+			if (handler_list_remove_cow(&wpt->handler_list, sentinel->hp) == 0) {
+				if (!watchpoint_gc_list) {
+					watchpoint_gc_list = grecs_list_create();
+					watchpoint_gc_list->free_entry = wpref_destroy;
+				}
+				grecs_list_append(watchpoint_gc_list, wpt);
+			} else {
+				wpt->parent = parent;
+		
+				debug(1, ("watchpoint_init: from directory_sentinel (%d)", __LINE__));
+				if (watchpoint_init(wpt)) {
+					//FIXME watchpoint_free(wpt);
+					rc = -1;
+//					watch_subdirs(wpt, 1);//FIXME: for BSD
+				} else {
+					watchpoint_recent_init(wpt);
+					watch_subdirs(wpt, 1);
+				}
+			}
+		}
+	}
+	free(filename);
+	debug(1, ("directory_sentinel finished at %d: %d", __LINE__, rc));
+	return rc;
+}
+
+int
+watchpoint_attach_directory_sentinel(struct watchpoint *wpt)
+{
+	struct handler *hp;
+	event_mask ev_mask;
+	struct sentinel *sentinel;
+	
+	getevt("create", &ev_mask);
+	hp = handler_alloc(ev_mask);
+	hp->run = directory_sentinel_handler_run;
+	hp->free = sentinel_handler_free;
+
+	sentinel = emalloc(sizeof(*sentinel));
+	sentinel->watchpoint = wpt;
+	sentinel->hp = hp;
+	watchpoint_ref(wpt);
+	
+	hp->data = sentinel;
+	hp->notify_always = 1;
+	
+	handler_list_append_cow(&wpt->handler_list, hp);
+	diag(LOG_NOTICE, _("installing CREATE sentinel for %s/*"), wpt->dirname);
+	return 0;
+}
+
 int 
 watchpoint_init(struct watchpoint *wpt)
 {
@@ -292,13 +489,6 @@ watchpoint_init(struct watchpoint *wpt)
 		mask.gen_mask |= hp->ev_mask.gen_mask;
 	}
 
-	if (wpt->depth) {
-		event_mask ev_mask;
-		getevt("create", &ev_mask);
-		mask.gen_mask |= ev_mask.gen_mask;
-		mask.sys_mask |= ev_mask.sys_mask;
-	}
-	
 	wd = sysev_add_watch(wpt, mask);
 	if (wd == -1) {
 		diag(LOG_ERR, _("cannot set watcher on %s: %s"),
@@ -310,97 +500,26 @@ watchpoint_init(struct watchpoint *wpt)
 
 	return 0;
 }
-
-static int watch_subdirs(struct watchpoint *parent, int notify);
-
-int
-subwatcher_create(struct watchpoint *parent, const char *dirname, int notify)
-{
-	struct watchpoint *wpt;
-	int inst;
-
-	wpt = watchpoint_install(dirname, &inst);
-	if (!inst)
-		return -1;
-
-	wpt->handler_list = handler_list_copy(parent->handler_list);
-	wpt->parent = parent;
-	
-	if (parent->depth == -1)
-		wpt->depth = parent->depth;
-	else if (parent->depth)
-		wpt->depth = parent->depth - 1;
-	else
-		wpt->depth = 0;
-	
-	if (watchpoint_init(wpt)) {
-		//FIXME watchpoint_free(wpt);
-		return -1;
-	}
-
-	return 1 + watch_subdirs(wpt, notify);
-}
 
 /* Deliver GENEV_CREATE event */
 void
-deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name)
+deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name,
+		  int notify)
 {
 	event_mask m = { GENEV_CREATE, 0 };
 	struct handler *hp;
 	handler_iterator_t itr;
 
+	if (watchpoint_recent_lookup(wp, name))
+		return;
+	debug(1, ("delivering CREATE for %s %s", dirname, name));
 	for_each_handler(wp, itr, hp) {
-		if (handler_matches_event(hp, gen, GENEV_CREATE|GENEV_WRITE, name))
-			hp->run(wp, &m, dirname, name, hp->data);
+		if (handler_matches_event(hp, gen, GENEV_CREATE, name))
+			if (notify || hp->notify_always)
+				hp->run(wp, &m, dirname, name, hp->data);
 	}
 }
 
-/* Check if a new watcher must be created and create it if so.
-
-   A watcher must be created if its parent's recursion depth has a non-null
-   value.  If it has a negative value, which means "recursively watch new
-   subdirectories without limit on their nesting level", it will be inherited
-   by the new watcher.  Otherwise, the new watcher will inherit the parent's
-   depth decreased by one, thus eventually cutting off creation of new
-   watchers.
-
-   Return positive number if the watcher has been created, 0 if the watcher
-   is not needed, and -1 on error.
-*/
-int
-check_new_watcher(const char *dir, const char *name)
-{
-	int rc;
-	char *fname;
-	struct stat st;
-	struct watchpoint *parent;
-
-	parent = watchpoint_lookup(dir);
-	if (!parent || !parent->depth)
-		return 0;
-	
-	fname = mkfilename(dir, name);
-	if (!fname) {
-		diag(LOG_ERR,
-		     _("cannot create watcher %s/%s: not enough memory"),
-		     dir, name);
-		return -1;
-	}
-
-	if (stat(fname, &st)) {
-		diag(LOG_ERR,
-		     _("cannot create watcher %s/%s, stat failed: %s"),
-		     dir, name, strerror(errno));
-		rc = -1;
-	} else if (S_ISDIR(st.st_mode)) {
-		deliver_ev_create(parent, parent->dirname, name);
-		rc = subwatcher_create(parent, fname, 1);
-	} else
-		rc = 0;
-	free(fname);
-	return rc;
-}
-
 int
 watchpoint_pattern_match(struct watchpoint *wpt, const char *file_name)
 {
@@ -427,18 +546,24 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	if (!parent->isdir)
 		return 0;
 
+	debug(1, ("watch_subdirs: %s", parent->dirname));
 	filemask = sysev_filemask(parent);
 	if (parent->depth)
 		filemask |= S_IFDIR;
 	else
 		filemask &= ~S_IFDIR;
-	if (filemask == 0 && !notify)
+	if (filemask == 0 && !notify) {
+		debug(1, ("watch_subdirs %s finished at %d", parent->dirname,
+			      __LINE__));
 		return 0;
+	}
 	
 	dir = opendir(parent->dirname);
 	if (!dir) {
 		diag(LOG_ERR, _("cannot open directory %s: %s"),
 		     parent->dirname, strerror(errno));
+		debug(1, ("watch_subdirs %s finished at %d", parent->dirname,
+			      __LINE__));
 		return 0;
 	}
 
@@ -458,25 +583,21 @@ watch_subdirs(struct watchpoint *parent, int notify)
 			     parent->dirname, ent->d_name);
 			continue;
 		}
-		if (stat(dirname, &st)) {
+		if (watchpoint_lookup(dirname))
+			/* Skip existing watchpoint */;
+		else if (stat(dirname, &st)) {
 			diag(LOG_ERR, _("cannot stat %s: %s"),
 			     dirname, strerror(errno));
 		} else if (watchpoint_pattern_match(parent, ent->d_name)
 			   == 0) {
-			if (notify)
-				deliver_ev_create(parent, parent->dirname,
-						  ent->d_name);
-
-			if (st.st_mode & filemask) {
-				int rc = subwatcher_create(parent, dirname,
-							   notify);
-				if (rc > 0)
-					total += rc;
-			}
+			deliver_ev_create(parent, parent->dirname,
+					  ent->d_name, notify);
 		}
 		free(dirname);
 	}
 	closedir(dir);
+	debug(1, ("watch_subdirs %s finished at %d", parent->dirname,
+		  __LINE__));
 	return total;
 }
 
@@ -487,6 +608,7 @@ setwatcher(void *ent, void *data)
 	struct wpref *wpref = (struct wpref *) ent;
 	struct watchpoint *wpt = wpref->wpt;
 	
+	debug(1, ("watchpoint_init: from setwatcher (%d)", __LINE__));
 	if (wpt->wd == -1 && watchpoint_init(wpt) == 0)
 		watch_subdirs(wpt, 0);
 	return 0;

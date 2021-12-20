@@ -223,7 +223,7 @@ process_timeouts()
 {
 	struct process *p;
 	time_t now = time(NULL);
-	time_t alarm_time = 0, x;
+	time_t alarm_time = watchpoint_recent_cleanup(), x;
 
 	debug(2, (_("begin scanning process list")));
 	for (p = proc_list; p; p = p->next) {
@@ -588,6 +588,7 @@ prog_handler_alloc(event_mask ev_mask, filpatlist_t fpat,
 	hp->fnames = fpat;
 	hp->run = prog_handler_run;
 	hp->free = prog_handler_free_data;
+	hp->notify_always = 0;
 	mem = emalloc(sizeof(*mem));
 	*mem = *p;
 	hp->data = mem;

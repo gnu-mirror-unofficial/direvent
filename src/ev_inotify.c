@@ -198,10 +198,14 @@ process_event(struct inotify_event *ep)
 
 	ev_log(ep->mask, wpt);
 
-	if (ep->mask & IN_CREATE) {
+	if (ep->mask & IN_CREATE) {		
 		debug(1, ("%s/%s created", wpt->dirname, ep->name));
-		if (check_new_watcher(wpt->dirname, ep->name) > 0)
+		if (watchpoint_recent_lookup(wpt, ep->name)) {
+			diag(LOG_NOTICE,
+			     "%s/%s: ignoring CREATE event: already delivered",
+			     wpt->dirname, ep->name);
 			return;
+		}
 	}
 
 	if (ep->len == 0)
