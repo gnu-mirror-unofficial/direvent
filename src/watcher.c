@@ -301,7 +301,8 @@ struct sentinel {
 
 static int
 sentinel_handler_run(struct watchpoint *wp, event_mask *event,
-		     const char *dirname, const char *file, void *data)
+		     const char *dirname, const char *file, void *data,
+		     int notify)
 {
 	struct sentinel *sentinel = data;
 	struct watchpoint *wpt = sentinel->watchpoint;
@@ -309,7 +310,7 @@ sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 	debug(1, ("watchpoint_init: from sentinel (%d)", __LINE__));
 	watchpoint_init(wpt);
 	watchpoint_install_ptr(wpt);
-	deliver_ev_create(wpt, dirname, file, 1);
+	deliver_ev_create(wpt, dirname, file, notify);
 	
 	if (handler_list_remove(wp->handler_list, sentinel->hp) == 0) {
 		if (!watchpoint_gc_list) {
@@ -368,7 +369,8 @@ static int watch_subdirs(struct watchpoint *parent, int notify);
 
 static int
 directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
-		       const char *dirname, const char *file, void *data)
+			       const char *dirname, const char *file,
+			       void *data, int notify)
 {
 	struct sentinel *sentinel = data;
 	struct watchpoint *parent = sentinel->watchpoint;
@@ -377,13 +379,13 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 	int filemask = sysev_filemask(parent);
 	struct watchpoint *wpt;
 	int rc = 0;
-
-	//FIXME: Do that in sysev_filemask?  See also watch_subdirs
+	
+        //FIXME: Do that in sysev_filemask?  See also watch_subdirs
 	if (parent->depth)
 		filemask |= S_IFDIR;
 	else
 		filemask &= ~S_IFDIR;
-	
+
 	filename = mkfilename(dirname, file);
 	if (!filename) {
 		diag(LOG_ERR,
@@ -408,7 +410,7 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 				wpt->depth--;
 			
 			wpt->handler_list = handler_list_copy(parent->handler_list);
-			if (wpt->depth)
+			if (USE_IFACE == IFACE_KQUEUE || wpt->depth)
 				watchpoint_attach_directory_sentinel(wpt);
 			if (handler_list_remove_cow(&wpt->handler_list, sentinel->hp) == 0) {
 				if (!watchpoint_gc_list) {
@@ -426,7 +428,7 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 //					watch_subdirs(wpt, 1);//FIXME: for BSD
 				} else {
 					watchpoint_recent_init(wpt);
-					watch_subdirs(wpt, 1);
+					watch_subdirs(wpt, notify);
 				}
 			}
 		}
@@ -488,6 +490,7 @@ watchpoint_init(struct watchpoint *wpt)
 		mask.sys_mask |= hp->ev_mask.sys_mask;
 		mask.gen_mask |= hp->ev_mask.gen_mask;
 	}
+	debug(1, ("%s: gen=%x,sys=%x", wpt->dirname, mask.sys_mask, mask.gen_mask));
 
 	wd = sysev_add_watch(wpt, mask);
 	if (wd == -1) {
@@ -516,7 +519,7 @@ deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name,
 	for_each_handler(wp, itr, hp) {
 		if (handler_matches_event(hp, gen, GENEV_CREATE, name))
 			if (notify || hp->notify_always)
-				hp->run(wp, &m, dirname, name, hp->data);
+				hp->run(wp, &m, dirname, name, hp->data, notify);
 	}
 }
 

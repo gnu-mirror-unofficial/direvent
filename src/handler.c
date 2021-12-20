@@ -37,7 +37,7 @@ watchpoint_run_handlers(struct watchpoint *wp, int evflags,
 	for_each_handler(wp, itr, hp) {
 		if (handler_matches_event(hp, sys, evflags, filename))
 			hp->run(wp, event_mask_init(&m, evflags, &hp->ev_mask),
-				dirname, filename, hp->data);
+				dirname, filename, hp->data, 1);
 	}
 }
 

@@ -5,4 +5,5 @@ testsuite
 testsuite.dir
 testsuite.log
 envdump
+genfile
 waitfile

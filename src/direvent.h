@@ -81,7 +81,8 @@ typedef int (*event_handler_fn) (struct watchpoint *wp,
 				 event_mask *event,
 				 const char *dir,
 				 const char *file,
-				 void *data);
+				 void *data,
+				 int notify);
 typedef void (*handler_free_fn) (void *data);
 
 /* Handler structure */
@@ -124,6 +125,8 @@ struct watchpoint {
 #if USE_IFACE == IFACE_KQUEUE
 	mode_t file_mode;
 	time_t file_ctime;
+	int watch_written;
+	int written;
 #endif
 };
 

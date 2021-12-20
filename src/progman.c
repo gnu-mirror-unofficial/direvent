@@ -451,7 +451,7 @@ runcmd(const char *cmd, char **envhint, event_mask *event, const char *file,
 
 static int
 prog_handler_run(struct watchpoint *wp, event_mask *event,
-		 const char *dirname, const char *file, void *data)
+		 const char *dirname, const char *file, void *data, int notify)
 {
 	pid_t pid;
 	int redir_fd[2] = { -1, -1 };
@@ -459,7 +459,7 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 	struct process *p;
 	struct prog_handler *hp = data;
 
-	if (!hp->command)
+	if (!hp->command || !notify)
 		return 0;
 	
 	debug(1, (_("starting %s, dir=%s, file=%s"),

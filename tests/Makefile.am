@@ -44,6 +44,7 @@ TESTSUITE_AT = \
   create.at\
   createrec.at\
   createrec2.at\
+  createrec3.at\
   delete.at\
   env00.at\
   env01.at\
@@ -81,4 +82,4 @@ check-local: atconfig atlocal $(TESTSUITE)
 	@$(SHELL) $(TESTSUITE)
 
 
-noinst_PROGRAMS=envdump
+noinst_PROGRAMS=envdump genfile

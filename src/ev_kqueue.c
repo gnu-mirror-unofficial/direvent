@@ -29,6 +29,18 @@ struct transtab sysev_transtab[] = {
 	{ "LINK",   NOTE_LINK   },
 	{ "RENAME", NOTE_RENAME },
 	{ "REVOKE", NOTE_REVOKE },
+#ifdef NOTE_CLOSE
+	{ "CLOSE",  NOTE_CLOSE },
+#endif
+#ifdef NOTE_CLOSE_WRITE
+	{ "CLOSE_WRITE", NOTE_CLOSE_WRITE },
+#endif
+#ifdef NOTE_OPEN
+	{ "OPEN", NOTE_OPEN },
+#endif
+#ifdef NOTE_READ
+	{ "READ", NOTE_READ },
+#endif
 	{ NULL }
 };
 
@@ -39,9 +51,17 @@ static struct kevent *chtab;
 static int chcnt;
 static int chclosed = -1;
 
+#define GENEV_WRITE_TRANSLATION (NOTE_WRITE|NOTE_EXTEND)
+
 event_mask genev_xlat[] = {
 	{ GENEV_CREATE, 0 },
-	{ GENEV_WRITE,  NOTE_WRITE|NOTE_EXTEND },
+	{ GENEV_WRITE,
+#if defined(NOTE_CLOSE_WRITE)
+	                NOTE_CLOSE_WRITE
+#else
+	                GENEV_WRITE_TRANSLATION
+#endif
+	},
 	{ GENEV_ATTRIB, NOTE_ATTRIB|NOTE_LINK },
 	{ GENEV_DELETE, NOTE_DELETE|NOTE_RENAME|NOTE_REVOKE },
 	{ 0 }
@@ -80,8 +100,15 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 		wpt->file_mode = st.st_mode;
 		wpt->file_ctime = st.st_ctime;
 		sysmask = mask.sys_mask | NOTE_DELETE;
-		if (S_ISDIR(st.st_mode) && mask.gen_mask & GENEV_CREATE)
-			sysmask |= NOTE_WRITE;
+#if defined(NOTE_CLOSE_WRITE)
+		if (mask.gen_mask & GENEV_WRITE) {
+			sysmask |= GENEV_WRITE_TRANSLATION;
+			wpt->watch_written = 1;
+			wpt->written = 0;
+		}
+#endif
+		if (S_ISDIR(st.st_mode) && (mask.gen_mask & GENEV_CREATE))
+			sysmask |= NOTE_WRITE;//FIXME: still needed?
 		EV_SET(chtab + chcnt, wd, EVFILT_VNODE,
 		       EV_ADD | EV_ENABLE | EV_CLEAR, sysmask,
 		       0, wpt);
@@ -193,6 +220,21 @@ process_event(struct kevent *ep)
 		return;
 	}
 
+	//FIXME
+	if (dp->watch_written) {
+		if (ep->fflags & GENEV_WRITE_TRANSLATION) {
+			dp->written = 1;
+		}
+		if (ep->fflags & NOTE_CLOSE_WRITE) {
+			if (dp->written)
+				/* Reset the flag and handle the event. */
+				dp->written = 0;
+			else
+				/* Ignore the event. */
+				ep->fflags &= ~NOTE_CLOSE_WRITE;
+		}
+	}
+	
 	filename = split_pathname(dp, &dirname);
 
 	watchpoint_run_handlers(dp, ep->fflags, dirname, filename);
