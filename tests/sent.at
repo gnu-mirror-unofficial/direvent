@@ -61,15 +61,11 @@ DIREVENT_GENEV_NAME=create
 
 AT_CHECK([
 cwd=`pwd -P`
-sed -e "s|$cwd|CWD|" stderr | sort
+sed -e '/installing CREATE sentinel for file/d' -e "s|$cwd|CWD|" stderr | sort
 ],
 [0],
-dnl FIXME: The sub/* sentinel message will appear on *BSD only
 [direvent: [[NOTICE]] installing CREATE sentinel for CWD/dir
 direvent: [[NOTICE]] installing CREATE sentinel for CWD/dir/sub
-direvent: [[NOTICE]] installing CREATE sentinel for CWD/dir/sub/*
-direvent: [[NOTICE]] installing CREATE sentinel for CWD/dir/sub/bar/*
-direvent: [[NOTICE]] installing CREATE sentinel for CWD/dir/sub/foo/*
 ])
 
 AT_CLEANUP
