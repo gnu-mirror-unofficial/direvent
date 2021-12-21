@@ -102,7 +102,6 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 #if defined(NOTE_CLOSE_WRITE)
 		if (mask.gen_mask & GENEV_WRITE) {
 			sysmask |= GENEV_WRITE_TRANSLATION;
-			wpt->watch_written = 1;
 			wpt->written = 0;
 		}
 #endif
@@ -225,18 +224,16 @@ process_event(struct kevent *ep)
 
 	//FIXME
 #ifdef NOTE_CLOSE_WRITE
-	if (dp->watch_written) {
-		if (ep->fflags & GENEV_WRITE_TRANSLATION) {
-			dp->written = 1;
-		}
-		if (ep->fflags & NOTE_CLOSE_WRITE) {
-			if (dp->written)
-				/* Reset the flag and handle the event. */
-				dp->written = 0;
-			else
-				/* Ignore the event. */
-				ep->fflags &= ~NOTE_CLOSE_WRITE;
-		}
+	if (ep->fflags & GENEV_WRITE_TRANSLATION) {
+		dp->written = 1;
+	}
+	if (ep->fflags & NOTE_CLOSE_WRITE) {
+		if (dp->written)
+			/* Reset the flag and handle the event. */
+			dp->written = 0;
+		else
+			/* Ignore the event. */
+			ep->fflags &= ~NOTE_CLOSE_WRITE;
 	}
 #endif
 	filename = split_pathname(dp, &dirname);

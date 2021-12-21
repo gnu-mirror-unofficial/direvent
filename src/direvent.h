@@ -124,7 +124,6 @@ struct watchpoint {
 	struct recent_head rhead;
 #if USE_IFACE == IFACE_KQUEUE
 	time_t file_ctime;
-	int watch_written;
 	int written;
 #endif
 };
