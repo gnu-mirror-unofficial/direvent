@@ -224,6 +224,7 @@ process_event(struct kevent *ep)
 	ev_log(ep->fflags, dp);
 
 	//FIXME
+#ifdef NOTE_CLOSE_WRITE
 	if (dp->watch_written) {
 		if (ep->fflags & GENEV_WRITE_TRANSLATION) {
 			dp->written = 1;
@@ -237,7 +238,7 @@ process_event(struct kevent *ep)
 				ep->fflags &= ~NOTE_CLOSE_WRITE;
 		}
 	}
-	
+#endif
 	filename = split_pathname(dp, &dirname);
 
 	watchpoint_run_handlers(dp, ep->fflags, dirname, filename);
