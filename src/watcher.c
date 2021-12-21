@@ -425,7 +425,6 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 				if (watchpoint_init(wpt)) {
 					//FIXME watchpoint_free(wpt);
 					rc = -1;
-//					watch_subdirs(wpt, 1);//FIXME: for BSD
 				} else {
 					watchpoint_recent_init(wpt);
 					watch_subdirs(wpt, notify);
@@ -490,7 +489,6 @@ watchpoint_init(struct watchpoint *wpt)
 		mask.sys_mask |= hp->ev_mask.sys_mask;
 		mask.gen_mask |= hp->ev_mask.gen_mask;
 	}
-	debug(1, ("%s: gen=%x,sys=%x", wpt->dirname, mask.sys_mask, mask.gen_mask));
 
 	wd = sysev_add_watch(wpt, mask);
 	if (wd == -1) {
@@ -570,10 +568,20 @@ watch_subdirs(struct watchpoint *parent, int notify)
 		return 0;
 	}
 
-	while (ent = readdir(dir)) {
+	while (1) {
 		struct stat st;
 		char *dirname;
 
+		errno = 0;
+		ent = readdir(dir);
+		if (!ent) {
+			if (errno)
+				diag(LOG_ERR, "readdir(%s): %s",
+				     parent->dirname, strerror(errno));
+			break;
+		}
+		
+		debug(1, ("watch_subdirs %s: found %s", parent->dirname, ent->d_name));
 		if (ent->d_name[0] == '.' &&
 		    (ent->d_name[1] == 0 ||
 		     (ent->d_name[1] == '.' && ent->d_name[2] == 0)))

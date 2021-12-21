@@ -1,0 +1,4 @@
+#! /bin/sh
+echo `pwd`/$DIREVENT_FILE >> $1
+if sort $1 | cmp - $2; then kill -HUP $DIREVENT_SELF_TEST_PID; fi
+

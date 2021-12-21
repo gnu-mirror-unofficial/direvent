@@ -123,7 +123,6 @@ struct watchpoint {
 						unsplit_pathname */
 	struct recent_head rhead;
 #if USE_IFACE == IFACE_KQUEUE
-	mode_t file_mode;
 	time_t file_ctime;
 	int watch_written;
 	int written;

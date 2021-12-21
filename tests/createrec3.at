@@ -27,40 +27,30 @@ debug 10;
 watcher {
 	path $cwd/dir recursive 2;
 	event create;
-	command "$cwd/handler.sh >> $cwd/handler.log";
+	command "$SRCDIR/listname $cwd/dump $cwd/expout";
 	option (shell,stdout,stderr);
 }
 ],
 [cd dir
 mkdir a
-> a/file
 mkdir a/b
-> a/b/file
 mkdir a/b/c
 > a/b/c/file
-touch sentinel
+> a/b/file
+> a/file
 ],
-[mkdir dir
-AT_DATA([handler.sh],
-[#!/bin/sh
-if test -f $DIREVENT_FILE; then
-  echo "`pwd -P`/$DIREVENT_FILE created" 
-  if test $DIREVENT_FILE = sentinel; then
-     /bin/kill -HUP $DIREVENT_SELF_TEST_PID
-  fi
-fi
-exit 0
-])
-chmod +x handler.sh
+[cat > expout <<EOT
+$cwd/dir/a
+$cwd/dir/a/b
+$cwd/dir/a/b/c
+$cwd/dir/a/b/file
+$cwd/dir/a/file
+EOT
+
+mkdir dir
 ],
-[ls dir/a/b/c/file
-sed -e "s|^$cwd/||" handler.log
-],
+[sort dump],
 [0],
-[dir/a/b/c/file
-dir/a/file created
-dir/a/b/file created
-dir/sentinel created
-])
+[expout])
 
 AT_CLEANUP

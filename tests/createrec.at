@@ -22,14 +22,21 @@ debug 10;
 watcher {
 	path $cwd/dir recursive;
 	event create;
-	command "$SRCDIR/printname $outfile";
+	command "$SRCDIR/listname $outfile $cwd/expout";
 	option (stdout,stderr);
 }
 ],
 [cp -r a dir
-touch dir/sentinel
 ],
-[outfile=$cwd/dump
+[cat > expout <<EOT
+$cwd/dir/a
+$cwd/dir/a/af
+$cwd/dir/a/af1
+$cwd/dir/a/b
+$cwd/dir/a/b/bf
+$cwd/dir/a/b/c
+EOT
+outfile=$cwd/dump
 mkdir dir
 mkdir a
 mkdir a/b
@@ -38,16 +45,9 @@ mkdir a/b/c
 > a/af1
 > a/b/bf
 ],
-[sed "s^$cwd^(CWD)^;s^$TESTDIR^(TESTDIR)^" $outfile | sort
+[sort $outfile
 ],
 [0],
-[(CWD)/dir/a
-(CWD)/dir/a/af
-(CWD)/dir/a/af1
-(CWD)/dir/a/b
-(CWD)/dir/a/b/bf
-(CWD)/dir/a/b/c
-(CWD)/dir/sentinel
-])
+[expout])
 
 AT_CLEANUP

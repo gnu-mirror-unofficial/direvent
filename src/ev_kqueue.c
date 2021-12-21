@@ -97,7 +97,6 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 			close(wd);
 			return -1;
 		}
-		wpt->file_mode = st.st_mode;
 		wpt->file_ctime = st.st_ctime;
 		sysmask = mask.sys_mask | NOTE_DELETE;
 #if defined(NOTE_CLOSE_WRITE)
@@ -108,11 +107,14 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 		}
 #endif
 		if (S_ISDIR(st.st_mode) && (mask.gen_mask & GENEV_CREATE))
-			sysmask |= NOTE_WRITE;//FIXME: still needed?
+			sysmask |= NOTE_WRITE;
 		EV_SET(chtab + chcnt, wd, EVFILT_VNODE,
 		       EV_ADD | EV_ENABLE | EV_CLEAR, sysmask,
 		       0, wpt);
 		wd = chcnt++;
+		if (kevent(kq, chtab, chcnt, NULL, 0, NULL) == -1)
+			diag(LOG_ERR, "%s: can't register kevent: %s",
+			     wpt->dirname, strerror(errno));
 	}
 	return wd;
 }
@@ -160,10 +162,19 @@ check_created(struct watchpoint *dp)
 		return;
 	}
 
-	while (ent = readdir(dir)) {
+	while (1) {
 		struct stat st;
 		char *pathname;
-		
+
+		errno = 0;
+		ent = readdir(dir);
+		if (!ent) {
+			if (errno)
+				diag(LOG_ERR, "readdir(%s): %s",
+				     dp->dirname, strerror(errno));
+			break;
+		}
+
 		if (ent->d_name[0] == '.' &&
 		    (ent->d_name[1] == 0 ||
 		     (ent->d_name[1] == '.' && ent->d_name[2] == 0)))
@@ -212,14 +223,6 @@ process_event(struct kevent *ep)
 
 	ev_log(ep->fflags, dp);
 
-	if (S_ISDIR(dp->file_mode)
-	    && !(ep->fflags & (NOTE_DELETE|NOTE_RENAME))) {
-		/* Check if new files have appeared. */
-		if (ep->fflags & NOTE_WRITE) 
-			check_created(dp);
-		return;
-	}
-
 	//FIXME
 	if (dp->watch_written) {
 		if (ep->fflags & GENEV_WRITE_TRANSLATION) {
@@ -241,10 +244,15 @@ process_event(struct kevent *ep)
 
 	unsplit_pathname(dp);
 	
+	if (dp->isdir && !(ep->fflags & (NOTE_DELETE|NOTE_RENAME))) {
+		/* Check if new files have appeared. */
+		if (ep->fflags & NOTE_WRITE) 
+			check_created(dp);
+	}
+
 	if (ep->fflags & (NOTE_DELETE|NOTE_RENAME)) {
 		debug(1, ("%s deleted", dp->dirname));
 		watchpoint_suspend(dp);
-		return;
 	}
 }	
 

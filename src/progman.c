@@ -293,7 +293,7 @@ close_fds(bigfd_set fdset)
 {
 	int i;
 
-	for (i = dup(0); i >= 0; i--) {
+	for (i = BIGFD_SET_COUNT; i >= 0; i--) {
 		if (fdset && BIGFD_ISSET(i, fdset))
 			continue;
 		close(i);
@@ -341,7 +341,7 @@ open_redirector(const char *tag, int prio, struct process **return_proc)
 		if (facility > 0) 
 			openlog(tag, LOG_PID, facility);
 
-		while (fgets(buf, sizeof(buf), fp) > 0) {
+		while (fgets(buf, sizeof(buf), fp)) {
 			int len = strlen(buf);
 			if (len && buf[len-1] == '\n')
 				buf[len-1] = 0;
