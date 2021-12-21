@@ -460,7 +460,7 @@ watchpoint_attach_directory_sentinel(struct watchpoint *wpt)
 	handler_list_append_cow(&wpt->handler_list, hp);
 	diag(LOG_NOTICE,
 	     wpt->isdir
-	       ? _("installing CREATE sentinel for %s/*"),
+	       ? _("installing CREATE sentinel for %s/*")
 	       : _("installing CREATE sentinel for file %s"),
 	     wpt->dirname);
 		
