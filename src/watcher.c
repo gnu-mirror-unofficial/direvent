@@ -145,8 +145,6 @@ watchpoint_recent_lookup(struct watchpoint *wp, char const *name)
 			diag(LOG_CRIT, _("not enough memory"));
 			exit(1);
 		}
-		debug(1, ("watchpoint_recent_lookup: %s %s: %d",
-			  wp->dirname, name, !install));
 	}
 	return !install;
 }
@@ -307,7 +305,6 @@ sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 	struct sentinel *sentinel = data;
 	struct watchpoint *wpt = sentinel->watchpoint;
 
-	debug(1, ("watchpoint_init: from sentinel (%d)", __LINE__));
 	watchpoint_init(wpt);
 	watchpoint_install_ptr(wpt);
 	deliver_ev_create(wpt, dirname, file, notify);
@@ -361,7 +358,6 @@ watchpoint_install_sentinel(struct watchpoint *wpt)
 	handler_list_append(sent->handler_list, hp);
 	unsplit_pathname(wpt);
 	diag(LOG_NOTICE, _("installing CREATE sentinel for %s"), wpt->dirname);
-	debug(1, ("watchpoint_init: from install_sentinel (%d)", __LINE__));
 	return watchpoint_init(sent);
 }
 
@@ -421,7 +417,6 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 			} else {
 				wpt->parent = parent;
 		
-				debug(1, ("watchpoint_init: from directory_sentinel (%d)", __LINE__));
 				if (watchpoint_init(wpt)) {
 					//FIXME watchpoint_free(wpt);
 					rc = -1;
@@ -433,7 +428,6 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 		}
 	}
 	free(filename);
-	debug(1, ("directory_sentinel finished at %d: %d", __LINE__, rc));
 	return rc;
 }
 
@@ -554,15 +548,12 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	if (!parent->isdir)
 		return 0;
 
-	debug(1, ("watch_subdirs: %s", parent->dirname));
 	filemask = sysev_filemask(parent);
 	if (parent->depth)
 		filemask |= S_IFDIR;
 	else
 		filemask &= ~S_IFDIR;
 	if (filemask == 0 && !notify) {
-		debug(1, ("watch_subdirs %s finished at %d", parent->dirname,
-			      __LINE__));
 		return 0;
 	}
 	
@@ -570,8 +561,6 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	if (!dir) {
 		diag(LOG_ERR, _("cannot open directory %s: %s"),
 		     parent->dirname, strerror(errno));
-		debug(1, ("watch_subdirs %s finished at %d", parent->dirname,
-			      __LINE__));
 		return 0;
 	}
 
@@ -588,7 +577,6 @@ watch_subdirs(struct watchpoint *parent, int notify)
 			break;
 		}
 		
-		debug(1, ("watch_subdirs %s: found %s", parent->dirname, ent->d_name));
 		if (ent->d_name[0] == '.' &&
 		    (ent->d_name[1] == 0 ||
 		     (ent->d_name[1] == '.' && ent->d_name[2] == 0)))
@@ -614,8 +602,6 @@ watch_subdirs(struct watchpoint *parent, int notify)
 		free(dirname);
 	}
 	closedir(dir);
-	debug(1, ("watch_subdirs %s finished at %d", parent->dirname,
-		  __LINE__));
 	return total;
 }
 
@@ -626,7 +612,6 @@ setwatcher(void *ent, void *data)
 	struct wpref *wpref = (struct wpref *) ent;
 	struct watchpoint *wpt = wpref->wpt;
 	
-	debug(1, ("watchpoint_init: from setwatcher (%d)", __LINE__));
 	if (wpt->wd == -1 && watchpoint_init(wpt) == 0)
 		watch_subdirs(wpt, 0);
 	return 0;
