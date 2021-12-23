@@ -1,0 +1,39 @@
+# This file is part of Direvent testsuite. -*- Autotest -*-
+# Copyright (C) 2021 Sergey Poznyakoff
+#
+# Direvent is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3, or (at your option)
+# any later version.
+#
+# Direvent is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Direvent.  If not, see <http://www.gnu.org/licenses/>.
+
+AT_SETUP([Change])
+AT_KEYWORDS([change])
+
+AT_DIREVENT_TEST([
+debug 10;
+watcher {
+	path $cwd/dir;
+	event change;
+	command "echo \$file \$genev_name >> $cwd/dump 2>&1 && kill -HUP \$self_test_pid";
+	option (shell);
+}
+],
+[genfile -f dir/file -s 10 -t 1 -- -s 20 -- s 20],
+[outfile=$cwd/dump
+mkdir dir
+],
+[cat $cwd/dump
+],
+[0],
+[file change
+])
+
+AT_CLEANUP

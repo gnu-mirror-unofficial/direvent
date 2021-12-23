@@ -31,12 +31,12 @@ watcher {
 ],
 [cd dir
 mkdir a
-genfile -t 1 -f a/file
+genfile -f a/file -t 1
 mkdir a/b
-genfile -t 1 -f a/b/file
+genfile -f a/b/file -t 1
 mkdir a/b/c
-genfile -t 1 -f a/b/c/file
-genfile -t 1 -f sentinel
+genfile -f a/b/c/file -t 1
+genfile -f sentinel -t 1
 ],
 [mkdir dir
 AT_DATA([handler.sh],

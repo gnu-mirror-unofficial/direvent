@@ -40,6 +40,7 @@ $(srcdir)/package.m4: $(top_srcdir)/configure.ac
 
 TESTSUITE_AT = \
   attrib.at\
+  change.at\
   cmdexp.at\
   create.at\
   createrec.at\

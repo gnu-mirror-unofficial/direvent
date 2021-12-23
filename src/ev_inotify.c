@@ -36,7 +36,7 @@ struct transtab sysev_transtab[] = {
 
 event_mask genev_xlat[] = {
 	{ GENEV_CREATE, IN_CREATE|IN_MOVED_TO },
-	{ GENEV_WRITE,  IN_MODIFY|IN_CLOSE_WRITE },
+	{ GENEV_WRITE,  IN_MODIFY },
 	{ GENEV_ATTRIB, IN_ATTRIB },
 	{ GENEV_DELETE, IN_DELETE|IN_MOVED_FROM },
 	{ 0 }
@@ -123,7 +123,13 @@ sysev_init()
 int
 sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 {
-	int wd = inotify_add_watch(ifd, wpt->dirname, mask.sys_mask);
+	int sysmask = evtrans_gen_to_sys(&mask, genev_xlat);
+	int wd;
+
+	if (mask.gen_mask & GENEV_CHANGE) {
+		sysmask |= IN_MODIFY | IN_CLOSE_WRITE;
+	}
+	wd = inotify_add_watch(ifd, wpt->dirname, sysmask);
 	if (wd >= 0 && wpreg(wd, wpt)) {
 		inotify_rm_watch(ifd, wd);
 		return -1;
@@ -160,6 +166,7 @@ process_event(struct inotify_event *ep)
 {
 	struct watchpoint *wpt;
 	char *dirname, *filename;
+	event_mask event;
 	
 	wpt = wpget(ep->wd);
 	if (!wpt) {
@@ -215,7 +222,20 @@ process_event(struct inotify_event *ep)
 		filename = ep->name;
 	}
 
-	watchpoint_run_handlers(wpt, ep->mask, dirname, filename);
+	/* Translate system events to generic ones. */
+	evtrans_sys_to_gen(ep->mask, genev_xlat, &event);
+	if (ep->mask & IN_MODIFY) {
+		wpt->written = 1;
+	}
+	if (ep->mask & IN_CLOSE_WRITE) {
+		if (wpt->written) {
+			/* Reset the flag and raise the event. */
+			wpt->written = 0;
+			event.gen_mask |= GENEV_CHANGE;
+		}
+	}
+	
+	watchpoint_run_handlers(wpt, event, dirname, filename);
 	
 	unsplit_pathname(wpt);
 

@@ -292,8 +292,8 @@ static void
 close_fds(bigfd_set fdset)
 {
 	int i;
-
-	for (i = BIGFD_SET_COUNT; i >= 0; i--) {
+	
+	for (i = sysconf(_SC_OPEN_MAX); i >= 0; i--) {
 		if (fdset && BIGFD_ISSET(i, fdset))
 			continue;
 		close(i);
