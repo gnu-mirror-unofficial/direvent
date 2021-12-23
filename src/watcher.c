@@ -512,7 +512,7 @@ void
 deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name,
 		  int notify)
 {
-	event_mask m = { GENEV_CREATE, 0 };
+	event_mask event = { GENEV_CREATE, 0 };
 	struct handler *hp;
 	handler_iterator_t itr;
 
@@ -520,9 +520,11 @@ deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name,
 		return;
 	debug(1, ("delivering CREATE for %s %s", dirname, name));
 	for_each_handler(wp, itr, hp) {
-		if (handler_matches_event(hp, gen, GENEV_CREATE, name))
-			if (notify || hp->notify_always)
-				hp->run(wp, &m, dirname, name, hp->data, notify);
+		event_mask m;
+		if (evtand(&event, &hp->ev_mask, &m) &&
+		    filpatlist_match(hp->fnames, name) == 0 &&
+		    (notify || hp->notify_always))
+			hp->run(wp, &m, dirname, name, hp->data, notify);
 	}
 }
 

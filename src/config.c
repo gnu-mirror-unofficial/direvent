@@ -221,7 +221,7 @@ cb_watcher(enum grecs_callback_command cmd, grecs_node_t *node,
 			++err;
 		}
 		if (evtnullp(&eventconf.ev_mask))
-			evtsetall(&eventconf.ev_mask);
+			evtfill(&eventconf.ev_mask);
 		if (err == 0)
 			eventconf_flush(&node->locus);
 		else

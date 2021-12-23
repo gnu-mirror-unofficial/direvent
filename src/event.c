@@ -16,104 +16,38 @@
 
 #include "direvent.h"
 
-
-struct symevt {
-	char *name;
-	event_mask mask;
-	int line;
-};
-
-struct grecs_symtab *evtab;
-
-unsigned
-hash_string(const char *name, unsigned long hashsize)
-{
-	unsigned i;
-	
-	for (i = 0; *name; name++) {
-		i <<= 1;
-		i ^= *(unsigned char*) name;
-	}
-	return i % hashsize;
-}		
-
-static unsigned
-symevt_hash(void *data, unsigned long hashsize)
-{
-	struct symevt *sym = data;
-	return hash_string(sym->name, hashsize);
-}
-
-static int
-symevt_cmp(const void *a, const void *b)
-{
-	struct symevt const *syma = a;
-	struct symevt const *symb = b;
-
-	return strcmp(syma->name, symb->name);
-}
-
-static int
-symevt_copy(void *a, void *b)
-{
-	struct symevt *syma = a;
-	struct symevt *symb = b;
-
-	syma->name = estrdup(symb->name);
-	return 0;
-}
-
-static void
-symevt_free(void *p)
-{
-	struct symevt *sym = p;
-	free(sym->name);
-	free(sym);
-}
-
-
-int
-defevt(const char *name, event_mask *mask, int line)
-{
-	struct symevt key, *evp;
-	int install = 1;
-	
-	if (!evtab) {
-		evtab = grecs_symtab_create(sizeof(struct symevt),
-					    symevt_hash, symevt_cmp,
-					    symevt_copy,
-					    NULL, symevt_free);
-		if (!evtab) {
-			diag(LOG_CRIT, "not enough memory");
-			exit(1);
-		}
-	}
-
-	key.name = (char *) name;
-	evp = grecs_symtab_lookup_or_install(evtab, &key, &install);
-	if (!install)
-		return evp->line;
-	evp->mask = *mask;
-	evp->line = line;
-	return 0;
-}
-
 int
 getevt(const char *name, event_mask *mask)
 {
-	if (evtab) {
-		struct symevt key, *evp;
-		key.name = (char *) name;
-		evp = grecs_symtab_lookup_or_install(evtab, &key, NULL);
-		if (evp) {
-			*mask = evp->mask;
-			return 0;
-		}
-	}
-	if (trans_strtotok(sysev_transtab, name, &mask->sys_mask))
+	if (trans_strtotok(genev_transtab, name, &mask->gen_mask) == 0)
+		mask->sys_mask = 0;
+	else if (trans_strtotok(sysev_transtab, name, &mask->sys_mask) == 0)
+		mask->gen_mask = 0;
+	else
 		return -1;
-	mask->gen_mask = 0;
 	return 0;
+}
+
+void
+evtempty(event_mask *mask)
+{
+	mask->gen_mask = 0;
+	mask->sys_mask = 0;
+}
+
+void
+evtfill(event_mask *mask)
+{
+	mask->gen_mask = trans_fullmask(genev_transtab);
+	mask->sys_mask = trans_fullmask(sysev_transtab);
+}
+
+int
+evtand(event_mask const *a, event_mask const *b, event_mask *res)
+{
+	res->gen_mask = a->gen_mask & b->gen_mask;
+	res->sys_mask = a->sys_mask & b->sys_mask;
+	return res->gen_mask != 0 || res->sys_mask != 0;
 }
 
 int
@@ -127,33 +61,26 @@ struct transtab genev_transtab[] = {
 	{ "write",  GENEV_WRITE  },
 	{ "attrib", GENEV_ATTRIB },
 	{ "delete", GENEV_DELETE },
+	{ "change", GENEV_CHANGE },
 	{ NULL }
 };
 
-event_mask *
-event_mask_init(event_mask *m, int fflags, event_mask const *req)
+void
+evtrans_sys_to_gen(int fflags, event_mask const *xlat, event_mask *ret_evt)
 {
-	int i;
-
-	m->sys_mask = fflags & req->sys_mask;
-	m->gen_mask = 0;
-	for (i = 0; i < genev_xlat[i].gen_mask; i++)
-		if (genev_xlat[i].sys_mask & m->sys_mask)
-			m->gen_mask |= genev_xlat[i].gen_mask;
-	if (req->gen_mask)
-		m->gen_mask &= req->gen_mask;
-	return m;
+	ret_evt->sys_mask = fflags;
+	ret_evt->gen_mask = 0;
+	for (; xlat->gen_mask != 0; xlat++)
+		if (xlat->sys_mask & ret_evt->sys_mask)
+			ret_evt->gen_mask |= xlat->gen_mask;
 }
 
-void
-evtsetall(event_mask *m)
+int
+evtrans_gen_to_sys(event_mask const *event, event_mask const *xlat)
 {
-	int i;
-	
-	m->sys_mask = 0;
-	m->gen_mask = 0;
-	for (i = 0; i < genev_xlat[i].gen_mask; i++) {
-		m->gen_mask |= genev_xlat[i].gen_mask;
-		m->sys_mask |= genev_xlat[i].sys_mask;
-	}
+	int n = 0;
+	for (; xlat->gen_mask != 0; xlat++)
+		if (xlat->gen_mask & event->gen_mask)
+			n |= xlat->sys_mask;
+	return n;
 }

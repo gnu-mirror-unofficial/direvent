@@ -27,7 +27,7 @@ handler_alloc(event_mask ev_mask)
 }
 
 void
-watchpoint_run_handlers(struct watchpoint *wp, int evflags,
+watchpoint_run_handlers(struct watchpoint *wp, event_mask event,
 			const char *dirname, const char *filename)
 {
 	handler_iterator_t itr;
@@ -35,9 +35,10 @@ watchpoint_run_handlers(struct watchpoint *wp, int evflags,
 	event_mask m;
 
 	for_each_handler(wp, itr, hp) {
-		if (handler_matches_event(hp, sys, evflags, filename))
-			hp->run(wp, event_mask_init(&m, evflags, &hp->ev_mask),
-				dirname, filename, hp->data, 1);
+		if (evtand(&event, &hp->ev_mask, &m) &&
+		    filpatlist_match(hp->fnames, filename) == 0) {
+			hp->run(wp, &m, dirname, filename, hp->data, 1);
+		}
 	}
 }
 

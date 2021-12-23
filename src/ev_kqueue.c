@@ -54,14 +54,7 @@ static int chclosed = -1;
 #define GENEV_WRITE_TRANSLATION (NOTE_WRITE|NOTE_EXTEND)
 
 event_mask genev_xlat[] = {
-	{ GENEV_CREATE, 0 },
-	{ GENEV_WRITE,
-#if defined(NOTE_CLOSE_WRITE)
-	                NOTE_CLOSE_WRITE
-#else
-	                GENEV_WRITE_TRANSLATION
-#endif
-	},
+	{ GENEV_WRITE,  GENEV_WRITE_TRANSLATION },
 	{ GENEV_ATTRIB, NOTE_ATTRIB|NOTE_LINK },
 	{ GENEV_DELETE, NOTE_DELETE|NOTE_RENAME|NOTE_REVOKE },
 	{ 0 }
@@ -98,10 +91,10 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 			return -1;
 		}
 		wpt->file_ctime = st.st_ctime;
-		sysmask = mask.sys_mask | NOTE_DELETE;
+		sysmask = evtrans_gen_to_sys(&mask, genev_xlat) | NOTE_DELETE;
 #if defined(NOTE_CLOSE_WRITE)
-		if (mask.gen_mask & GENEV_WRITE) {
-			sysmask |= GENEV_WRITE_TRANSLATION;
+		if (mask.gen_mask & GENEV_CHANGE) {
+			sysmask |= GENEV_WRITE_TRANSLATION | NOTE_CLOSE_WRITE;
 			wpt->written = 0;
 		}
 #endif
@@ -214,6 +207,7 @@ process_event(struct kevent *ep)
 {
 	struct watchpoint *dp = ep->udata;
 	char *filename, *dirname;
+	event_mask event;
 	
 	if (!dp) {
 		diag(LOG_NOTICE, "unrecognized event %x", ep->fflags);
@@ -222,25 +216,33 @@ process_event(struct kevent *ep)
 
 	ev_log(ep->fflags, dp);
 
-	//FIXME
+	/* Translate system events to generic ones. */
+	evtrans_sys_to_gen(ep->fflags, genev_xlat, &event);
 #ifdef NOTE_CLOSE_WRITE
 	if (ep->fflags & GENEV_WRITE_TRANSLATION) {
 		dp->written = 1;
 	}
 	if (ep->fflags & NOTE_CLOSE_WRITE) {
-		if (dp->written)
-			/* Reset the flag and handle the event. */
+		if (dp->written) {
+			/* Reset the flag and raise the event. */
 			dp->written = 0;
-		else
-			/* Ignore the event. */
-			ep->fflags &= ~NOTE_CLOSE_WRITE;
+			event.gen_mask |= GENEV_CHANGE;
+		}
 	}
 #endif
-	filename = split_pathname(dp, &dirname);
+	//FIXME: log generic events
 
-	watchpoint_run_handlers(dp, ep->fflags, dirname, filename);
-
-	unsplit_pathname(dp);
+	/* 
+	 * If the event was reported for a non-directory, run user-installed
+	 * handlers.  Notice, that so far special handlers (such as sentinels)
+	 * are installed only for directories.  Should that change in the
+	 * future, the logic below will need to be changed accordingly.
+	 */
+	if (!dp->isdir) {
+		filename = split_pathname(dp, &dirname);
+		watchpoint_run_handlers(dp, event, dirname, filename);
+		unsplit_pathname(dp);
+	}
 	
 	if (dp->isdir && !(ep->fflags & (NOTE_DELETE|NOTE_RENAME))) {
 		/* Check if new files have appeared. */

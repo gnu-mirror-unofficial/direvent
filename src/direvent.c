@@ -204,6 +204,15 @@ mkfilename(const char *dir, const char *file)
 }
 
 int
+trans_fullmask(struct transtab *tab)
+{
+	int n = 0;
+	for (; tab->name; tab++)
+		n |= tab->tok;
+	return n;
+}
+
+int
 trans_strtotok(struct transtab *tab, const char *str, int *ret)
 {
 	for (; tab->name; tab++)
@@ -375,19 +384,6 @@ ev_log(int flags, struct watchpoint *dp)
 			debug(1, ("%s: %s", dp->dirname, p));
 	}
 }
-
-
-/* Initialize generic event table */
-void
-genev_init()
-{
-	int i;
-	
-	for (i = 0; i < genev_xlat[i].gen_mask; i++)
-		defevt(trans_toktostr(genev_transtab, genev_xlat[i].gen_mask),
-		       &genev_xlat[i], 0);
-}
-	
 
 int signo = 0;
 int stop = 0;
@@ -467,7 +463,6 @@ main(int argc, char **argv)
 	set_program_name(argv[0]);
 	tag = estrdup(program_name);
 
-	genev_init();
 	config_init();
 	
 	parse_options(argc, argv, &i);

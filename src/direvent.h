@@ -32,10 +32,11 @@
 #define N_(s) s
 
 /* Generic (system-independent) event codes */
-#define GENEV_CREATE  0x01
-#define GENEV_WRITE   0x02
-#define GENEV_ATTRIB  0x04
-#define GENEV_DELETE  0x08
+#define GENEV_CREATE   0x01
+#define GENEV_WRITE    0x02
+#define GENEV_ATTRIB   0x04
+#define GENEV_DELETE   0x08
+#define GENEV_CHANGE   0x10
 
 /* Handler flags. */
 #define HF_NOWAIT  0x01   /* Don't wait for termination */
@@ -128,11 +129,6 @@ struct watchpoint {
 #endif
 };
 
-#define __cat2__(a,b) a ## b
-#define handler_matches_event(h,m,f,n)		\
-	(((h)->ev_mask.__cat2__(m,_mask) & (f)) &&	\
-	 filpatlist_match((h)->fnames, n) == 0)
-
 struct handler *handler_alloc(event_mask ev_mask);
 void handler_free(struct handler *hp);
 
@@ -191,14 +187,15 @@ int sysev_select(void);
 int sysev_name_to_code(const char *name);
 const char *sysev_code_to_name(int code);
 
-int defevt(const char *name, event_mask *mask, int line);
 int getevt(const char *name, event_mask *mask);
-int evtnullp(event_mask *mask);
-event_mask *event_mask_init(event_mask *m, int fflags, event_mask const *);
-void evtsetall(event_mask *m);
 
-/* Translate generic events to system ones and vice-versa */
-extern event_mask genev_xlat[];
+void evtempty(event_mask *mask);
+void evtfill(event_mask *mask);
+int evtnullp(event_mask *mask);
+int evtand(event_mask const *a, event_mask const *b, event_mask *res);
+void evtrans_sys_to_gen(int fflags, event_mask const *xlat, event_mask *ret_evt);
+int evtrans_gen_to_sys(event_mask const *event, event_mask const *xlat);
+
 /* Translate generic event codes to symbolic names and vice-versa */
 extern struct transtab genev_transtab[];
 /* Translate system event codes to symbolic names and vice-versa */
@@ -208,6 +205,7 @@ int trans_strtotok(struct transtab *tab, const char *str, int *ret);
 char *trans_toktostr(struct transtab *tab, int tok);
 char *trans_tokfirst(struct transtab *tab, int tok, int *next);
 char *trans_toknext(struct transtab *tab, int tok, int *next);
+int trans_fullmask(struct transtab *tab);
 
 struct pathent {
 	long depth;
@@ -229,7 +227,7 @@ void watchpoint_gc(void);
 
 int watchpoint_pattern_match(struct watchpoint *dwp, const char *file_name);
 
-void watchpoint_run_handlers(struct watchpoint *wp, int evflags,
+void watchpoint_run_handlers(struct watchpoint *wp, event_mask event,
 			      const char *dirname, const char *filename);
 
 
