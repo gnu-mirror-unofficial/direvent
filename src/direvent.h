@@ -310,3 +310,4 @@ void filpatlist_destroy(filpatlist_t *fptr);
 int filpatlist_match(filpatlist_t fp, const char *name);
 int filpatlist_is_empty(filpatlist_t fp);
 
+void close_fds(int minfd);

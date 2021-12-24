@@ -297,33 +297,6 @@ switchpriv(struct prog_handler *hp)
 	return 0;
 }		
 
-typedef fd_set *bigfd_set;
-
-#define BIGFD_SET_COUNT \
-	((sysconf(_SC_OPEN_MAX) + FD_SETSIZE - 1) / FD_SETSIZE)
-
-#define BIGFD_SET_ALLOC() \
-	ecalloc(BIGFD_SET_COUNT, sizeof(fd_set))
-
-#define BIGFD_ZERO(fds) \
-	memset(fds, 0, sizeof(*bigfd_set) * BIGFD_SET_COUNT)
-#define BIGFD_SET(n, fds) \
-	FD_SET((n) % FD_SETSIZE, (fds) + (n) / FD_SETSIZE)
-#define BIGFD_ISSET(n, fds) \
-	FD_ISSET((n) % FD_SETSIZE, (fds) + (n) / FD_SETSIZE)
-
-static void
-close_fds(bigfd_set fdset)
-{
-	int i;
-	
-	for (i = sysconf(_SC_OPEN_MAX); i >= 0; i--) {
-		if (fdset && BIGFD_ISSET(i, fdset))
-			continue;
-		close(i);
-	}
-}
-
 /* Operations with handlers and redirections */
 
 static void
@@ -339,8 +312,8 @@ open_redirector(const char *tag, int prio, struct process **return_proc)
 	FILE *fp;
 	char buf[512];
 	pid_t pid;
-	bigfd_set fdset;
-
+	int i;
+	
 	if (pipe(p)) {
 		diag(LOG_ERR,
 		     _("cannot start redirector for %s, pipe failed: %s"),
@@ -350,12 +323,9 @@ open_redirector(const char *tag, int prio, struct process **return_proc)
 	switch (pid = fork()) {
 	case 0:
 		/* Redirector process */
-		fdset = BIGFD_SET_ALLOC();
-		BIGFD_SET(p[0], fdset);
-		if (facility <= 0)
-			BIGFD_SET(2, fdset);
-		close_fds(fdset);
-		
+		close_fds(p[0] + 1);
+		for (i = 3; i < p[0]; i++)
+			close(i);
 		alarm(0);
 		signal_setup(redir_exit);
 
@@ -509,7 +479,7 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 	
 	if (pid == 0) {		
 		/* child */
-		bigfd_set fdset = BIGFD_SET_ALLOC();
+		int keepfd[3] = { 0, 0, 0 };
 		
 		if (switchpriv(hp))
 			_exit(127);
@@ -526,7 +496,7 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 				diag(LOG_ERR, "dup2: %s", strerror(errno));
 				_exit(127);
 			}
-			BIGFD_SET(1, fdset);
+			keepfd[1] = 1;
 		}
 		if (redir_fd[REDIR_ERR] != -1) {
 			if (redir_fd[REDIR_ERR] != 2 &&
@@ -534,9 +504,14 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 				diag(LOG_ERR, "dup2: %s", strerror(errno));
 				_exit(127);
 			}
-			BIGFD_SET(2, fdset);
+			keepfd[2] = 1;
 		}
-		close_fds(fdset);
+		close_fds(3);
+		close(0);
+		if (!keepfd[1])
+			close(1);
+		if (!keepfd[2])
+			close(2);
 		alarm(0);
 		signal_setup(SIG_DFL);
 		runcmd(hp->command, hp->env, event, file, hp->flags & HF_SHELL);

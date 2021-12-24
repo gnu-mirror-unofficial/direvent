@@ -19,6 +19,7 @@ direvent_SOURCES=\
  direvent.c\
  direvent.h\
  cmdline.h\
+ closefds.c\
  config.c\
  environ.c\
  event.c\
