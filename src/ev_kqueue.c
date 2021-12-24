@@ -95,7 +95,7 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 #if defined(NOTE_CLOSE_WRITE)
 		if (mask.gen_mask & GENEV_CHANGE) {
 			sysmask |= GENEV_WRITE_TRANSLATION | NOTE_CLOSE_WRITE;
-			wpt->written = 0;
+			wpt->file_changed = 0;
 		}
 #endif
 		if (S_ISDIR(st.st_mode) && (mask.gen_mask & GENEV_CREATE))
@@ -220,12 +220,12 @@ process_event(struct kevent *ep)
 	evtrans_sys_to_gen(ep->fflags, genev_xlat, &event);
 #ifdef NOTE_CLOSE_WRITE
 	if (ep->fflags & GENEV_WRITE_TRANSLATION) {
-		dp->written = 1;
+		dp->file_changed = 1;
 	}
 	if (ep->fflags & NOTE_CLOSE_WRITE) {
-		if (dp->written) {
+		if (dp->file_changed) {
 			/* Reset the flag and raise the event. */
-			dp->written = 0;
+			dp->file_changed = 0;
 			event.gen_mask |= GENEV_CHANGE;
 		}
 	}

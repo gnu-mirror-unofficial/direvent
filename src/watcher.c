@@ -30,6 +30,9 @@ watchpoint_unref(struct watchpoint *wpt)
 {
 	if (--wpt->refcnt)
 		return;
+#if USE_IFACE == IFACE_INOTIFY
+	grecs_symtab_free(wpt->files_changed);
+#endif
 	watchpoint_recent_deinit(wpt);
 	free(wpt->dirname);
 	handler_list_unref(wpt->handler_list);
@@ -133,8 +136,7 @@ watchpoint_recent_init(struct watchpoint *wp)
 	gettimeofday(&wp->rhead.tv, NULL);
 	wp->rhead.names = grecs_symtab_create_default(sizeof(struct grecs_syment));
 	if (!wp->rhead.names) {
-		diag(LOG_CRIT, _("not enough memory"));
-		exit(1);
+		nomem_abend();
 	}
 	watchpoint_recent_link(wp);
 	alarm(1);
@@ -151,10 +153,8 @@ watchpoint_recent_lookup(struct watchpoint *wp, char const *name)
 		key.name = (char*) name;
 		ent = grecs_symtab_lookup_or_install(wp->rhead.names, &key,
 						     &install);
-		if (!ent) {
-			diag(LOG_CRIT, _("not enough memory"));
-			exit(1);
-		}
+		if (!ent)
+			nomem_abend();
 	}
 	return !install;
 }

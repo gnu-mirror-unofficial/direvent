@@ -123,9 +123,11 @@ struct watchpoint {
 						split_pathname,
 						unsplit_pathname */
 	struct recent_head rhead;
-	int written;
 #if USE_IFACE == IFACE_KQUEUE
+	int file_changed;
 	time_t file_ctime;
+#else
+	struct grecs_symtab *files_changed;	
 #endif
 };
 

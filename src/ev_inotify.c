@@ -164,6 +164,37 @@ remove_watcher(const char *dir, const char *name)
 		watchpoint_suspend(wpt);
 }
 
+/*
+ * Define or test the changed status of file FILENAME in watchpoint WPT.
+ * If INSTALL is 1, file changed status is set.  Otherwise, its current
+ * status is verified and reset to unchanged.
+ * Returns the status (0 if file is not changed and 1 otherwise).
+ */
+static int
+file_changed(struct watchpoint *wpt, char const *filename, int install)
+{
+	struct grecs_syment key;
+
+	if (install) {
+		if (!wpt->files_changed) {
+			wpt->files_changed = grecs_symtab_create_default(sizeof(struct grecs_syment));
+			if (!wpt->files_changed)
+				nomem_abend();
+		}
+	} else if (!wpt->files_changed)
+		return 0;
+
+	key.name = (char*) filename;
+	if (grecs_symtab_lookup_or_install(wpt->files_changed, &key,
+					   &install)) {
+		grecs_symtab_remove(wpt->files_changed, &key);
+		return 1;
+	}
+	if (install)
+		nomem_abend();
+	return 0;
+}
+
 static void
 process_event(struct inotify_event *ep)
 {
@@ -232,12 +263,11 @@ process_event(struct inotify_event *ep)
 	/* Translate system events to generic ones. */
 	evtrans_sys_to_gen(ep->mask, genev_xlat, &event);
 	if (ep->mask & CHANGED_MASK) {
-		wpt->written = 1;
+		file_changed(wpt, filename, 1);
 	}
 	if (ep->mask & IN_CLOSE_WRITE) {
-		if (wpt->written) {
+		if (file_changed(wpt, filename, 0)) {
 			/* Reset the flag and raise the event. */
-			wpt->written = 0;
 			event.gen_mask |= GENEV_CHANGE;
 		}
 	}
