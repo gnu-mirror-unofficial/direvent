@@ -134,14 +134,19 @@ debugprt(const char *fmt, ...)
 }
 
 /* Memory allocation with error checking */
+void
+nomem_abend(void)
+{
+	diag(LOG_CRIT, "%s", _("not enough memory"));
+	exit(2);
+}
+
 void *
 emalloc(size_t size)
 {
 	void *p = malloc(size);
-	if (!p) {
-		diag(LOG_CRIT, _("not enough memory"));
-		exit(2);
-	}
+	if (!p)
+		nomem_abend();
 	return p;
 }
 
@@ -149,10 +154,8 @@ void *
 ecalloc(size_t nmemb, size_t size)
 {
 	void *p = calloc(nmemb, size);
-	if (!p) {
-		diag(LOG_CRIT, "not enough memory");
-		exit(2);
-	}
+	if (!p)
+		nomem_abend();
 	return p;
 }
 
@@ -160,10 +163,8 @@ void *
 erealloc(void *ptr, size_t size)
 {
 	void *p = realloc(ptr, size);
-	if (!p) {
-		diag(LOG_CRIT, _("not enough memory"));
-		exit(2);
-	}
+	if (!p)
+		nomem_abend();
 	return p;
 }
 

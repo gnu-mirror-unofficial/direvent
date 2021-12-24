@@ -28,8 +28,25 @@
 #define REDIR_OUT 0
 #define REDIR_ERR 1
 
-#define PROC_HANDLER 0
-#define PROC_REDIR   1
+#define PROC_HANDLER  0
+#define PROC_REDIR    1
+/* Special types for use in print_status: */
+#define PROC_SELFTEST 2
+#define PROC_FOREIGN  3
+
+static char const *
+process_type_string(int type)
+{
+	static char const *typestr[] = {
+		"handler",
+		"logger",
+		"self-test",
+		"foreign"
+	};
+	if (type >= 0 && type < sizeof(typestr) / sizeof(typestr[0]))
+		return typestr[type];
+	return "unknown!";
+}
 
 /* A running process is described by this structure */
 struct process {
@@ -135,37 +152,43 @@ process_lookup(pid_t pid)
 }
 
 static void
-print_status(pid_t pid, int status, sigset_t *mask)
+print_status(pid_t pid, int status, int type, sigset_t *mask)
 {
 	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status) == 0)
-			debug(1, (_("process %lu exited successfully"),
-				  (unsigned long) pid));
-		else
-			diag(LOG_ERR, _("process %lu failed with status %d"),
-			     (unsigned long) pid, WEXITSTATUS(status));
+		if (WEXITSTATUS(status) == 0) {
+			debug(type == PROC_HANDLER ? 1 : 2,
+			      (_("process %lu (%s) exited successfully"),
+			       (unsigned long) pid,
+			       process_type_string(type)));
+		} else
+			diag(LOG_ERR,
+			     _("process %lu (%s) failed with status %d"),
+			     (unsigned long) pid, process_type_string(type),
+			     WEXITSTATUS(status));
 	} else if (WIFSIGNALED(status)) {
 		int prio;
-
+		char *core_status;
+		
 		if (sigismember(mask, WTERMSIG(status)))
 			prio = LOG_DEBUG;
 		else
 			prio = LOG_ERR;
 
-		diag(prio, _("process %lu terminated on signal %d"),
-		     (unsigned long) pid, WTERMSIG(status));
+		if (WCOREDUMP(status)) {
+			core_status = _(" (dumped core)");
+		} else
+			core_status = "";
+		diag(prio, _("process %lu (%s) terminated on signal %d%s"),
+		     (unsigned long) pid, process_type_string(type),
+		     WTERMSIG(status), core_status);
 	} else if (WIFSTOPPED(status))
-		diag(LOG_ERR, _("process %lu stopped on signal %d"),
-		     (unsigned long) pid, WSTOPSIG(status));
-#ifdef WCOREDUMP
-	else if (WCOREDUMP(status))
-		diag(LOG_ERR,
-		     _("process %lu dumped core"), (unsigned long) pid);
-#endif
+		diag(LOG_ERR, _("process %lu (%s) stopped on signal %d"),
+		     (unsigned long) pid, process_type_string(type),
+		     WSTOPSIG(status));
 	else
 		diag(LOG_ERR,
-		     _("process %lu terminated with unrecognized status"),
-		     (unsigned long) pid);
+		     _("process %lu (%s) terminated with unrecognized status"),
+		     (unsigned long) pid, process_type_string(type));
 }
 
 void
@@ -180,7 +203,7 @@ process_cleanup(int expect_term)
 
 		if (pid == self_test_pid) {
 			sigaddset(&set, SIGHUP);
-			print_status(pid, status, &set);
+			print_status(pid, status, PROC_SELFTEST, &set);
 			
 			if (WIFEXITED(status))
 				exit_code = WEXITSTATUS(status);
@@ -201,7 +224,8 @@ process_cleanup(int expect_term)
 				sigaddset(&set, SIGTERM);
 				sigaddset(&set, SIGKILL);
 			}
-			print_status(pid, status, &set);
+			print_status(pid, status, p ? p->type : PROC_FOREIGN,
+				     &set);
 			if (!p)
 				continue;
 
@@ -225,7 +249,7 @@ process_timeouts()
 	time_t now = time(NULL);
 	time_t alarm_time = watchpoint_recent_cleanup(), x;
 
-	debug(2, (_("begin scanning process list")));
+	debug(3, (_("begin scanning process list")));
 	for (p = proc_list; p; p = p->next) {
 		x = now - p->start;
 		if (x >= p->timeout) {
@@ -238,11 +262,11 @@ process_timeouts()
 	}
 
 	if (alarm_time) {
-		debug(2, (_("scheduling alarm in %lu seconds"),
+		debug(3, (_("scheduling alarm in %lu seconds"),
 			  (unsigned long) alarm_time));
 		alarm(alarm_time);
 	}
-	debug(2, ("end scanning process list"));
+	debug(3, ("end scanning process list"));
 }
 
 int
@@ -356,7 +380,7 @@ open_redirector(const char *tag, int prio, struct process **return_proc)
 		return -1;
 
 	default:
-		debug(1, (_("redirector for %s started, pid=%lu"),
+		debug(3, (_("redirector for %s started, pid=%lu"),
 			  tag, (unsigned long) pid));
 		close(p[0]);
 		*return_proc = register_process(PROC_REDIR, pid, 
@@ -541,7 +565,7 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 		return 0;
 	}
 
-	debug(1, (_("waiting for %s (%lu) to terminate"),
+	debug(2, (_("waiting for %s (%lu) to terminate"),
 		  hp->command, (unsigned long)pid));
 	while (time(NULL) - p->start < 2 * p->timeout) {
 		sleep(1);

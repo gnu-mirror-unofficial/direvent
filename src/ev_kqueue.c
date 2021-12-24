@@ -251,7 +251,7 @@ process_event(struct kevent *ep)
 	}
 
 	if (ep->fflags & (NOTE_DELETE|NOTE_RENAME)) {
-		debug(1, ("%s deleted", dp->dirname));
+		debug(1, (_("%s deleted"), dp->dirname));
 		watchpoint_suspend(dp);
 	}
 }	

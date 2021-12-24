@@ -34,6 +34,8 @@ struct transtab sysev_transtab[] = {
 	{ 0 }
 };
 
+#define CHANGED_MASK (IN_CREATE|IN_MOVED_TO|IN_MODIFY)
+
 event_mask genev_xlat[] = {
 	{ GENEV_CREATE, IN_CREATE|IN_MOVED_TO },
 	{ GENEV_WRITE,  IN_MODIFY },
@@ -127,7 +129,7 @@ sysev_add_watch(struct watchpoint *wpt, event_mask mask)
 	int wd;
 
 	if (mask.gen_mask & GENEV_CHANGE) {
-		sysmask |= IN_MODIFY | IN_CLOSE_WRITE;
+		sysmask |= CHANGED_MASK | IN_CLOSE_WRITE;
 	}
 	wd = inotify_add_watch(ifd, wpt->dirname, sysmask);
 	if (wd >= 0 && wpreg(wd, wpt)) {
@@ -151,8 +153,9 @@ remove_watcher(const char *dir, const char *name)
 	struct watchpoint *wpt;
 	char *fullname = mkfilename(dir, name);
 	if (!fullname) {
-		diag(LOG_EMERG, "not enough memory: "
-		     "cannot look up a watcher to delete");
+		diag(LOG_EMERG, "%s",
+		     _("not enough memory: "
+		       "cannot look up a watcher to delete"));
 		return;
 	}
 	wpt = watchpoint_lookup(fullname);
@@ -183,8 +186,7 @@ process_event(struct inotify_event *ep)
 	}
 	
 	if (ep->mask & IN_Q_OVERFLOW) {
-		diag(LOG_NOTICE,
-		     "event queue overflow");
+		diag(LOG_NOTICE, "%s", _("event queue overflow"));
 		return;
 	} else if (ep->mask & IN_UNMOUNT) {
 		/* FIXME: not sure if there's
@@ -194,37 +196,42 @@ process_event(struct inotify_event *ep)
 		*/
 		return;
 	} else if (!wpt) {
-		if (ep->name)
-			diag(LOG_NOTICE, "unrecognized event %x"
-			     "for %s", ep->mask, ep->name);
+		if (ep->len)
+			diag(LOG_NOTICE, _("unrecognized event %x for %s"),
+			     ep->mask, ep->name);
 		else
-			diag(LOG_NOTICE,
-			     "unrecognized event %x", ep->mask);
+			diag(LOG_NOTICE, _("unrecognized event %x"), ep->mask);
 		return;
 	}
 
 	ev_log(ep->mask, wpt);
 
 	if (ep->mask & IN_CREATE) {		
-		debug(1, ("%s/%s created", wpt->dirname, ep->name));
+		debug(1, (_("%s/%s created"), wpt->dirname, ep->name));
 		if (watchpoint_recent_lookup(wpt, ep->name)) {
 			diag(LOG_NOTICE,
-			     "%s/%s: ignoring CREATE event: already delivered",
+			     _("%s/%s: ignoring CREATE event: already delivered"),
 			     wpt->dirname, ep->name);
 			return;
 		}
 	}
 
-	if (ep->len == 0)
+	if (ep->len == 0) {
+		if (wpt->isdir) {
+			diag(LOG_NOTICE,
+			     _("%s: ignoring event for the watchpoint directory"),
+			     wpt->dirname);
+			return;
+		}
 		filename = split_pathname(wpt, &dirname);
-	else {
+	} else {
 		dirname = wpt->dirname;
 		filename = ep->name;
 	}
 
 	/* Translate system events to generic ones. */
 	evtrans_sys_to_gen(ep->mask, genev_xlat, &event);
-	if (ep->mask & IN_MODIFY) {
+	if (ep->mask & CHANGED_MASK) {
 		wpt->written = 1;
 	}
 	if (ep->mask & IN_CLOSE_WRITE) {
@@ -240,7 +247,7 @@ process_event(struct inotify_event *ep)
 	unsplit_pathname(wpt);
 
 	if (ep->mask & (IN_DELETE|IN_MOVED_FROM)) {
-		debug(1, ("%s/%s deleted", wpt->dirname, ep->name));
+		debug(1, (_("%s/%s deleted"), wpt->dirname, ep->name));
 		remove_watcher(wpt->dirname, ep->name);
 	}
 }	
@@ -258,11 +265,11 @@ sysev_select()
 		if (errno == EINTR) {
 			if (!signo || signo == SIGCHLD || signo == SIGALRM)
 				return 0;
-			diag(LOG_NOTICE, "got signal %d", signo);
+			diag(LOG_NOTICE, _("got signal %d"), signo);
 			return 1;
 		}
 		
-		diag(LOG_NOTICE, "read failed: %s", strerror(errno));
+		diag(LOG_NOTICE, _("read failed: %s"), strerror(errno));
 		return 1;
 	}
 		

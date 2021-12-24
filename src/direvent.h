@@ -164,6 +164,7 @@ extern pid_t self_test_pid;
 extern int exit_code;
 
 
+void nomem_abend(void);
 void *emalloc(size_t size);
 void *ecalloc(size_t nmemb, size_t size);
 void *erealloc(void *ptr, size_t size);

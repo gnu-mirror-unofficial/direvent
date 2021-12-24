@@ -36,6 +36,16 @@ watchpoint_unref(struct watchpoint *wpt)
 	free(wpt);
 }
 
+int
+watchpoint_filemask(struct watchpoint *wpt)
+{
+	int filemask = sysev_filemask(wpt);
+	if (wpt->depth)
+		filemask |= S_IFDIR;
+	else
+		filemask &= ~S_IFDIR;
+	return filemask;
+}
 
 struct wpref {
 	int used;
@@ -110,7 +120,7 @@ void
 watchpoint_recent_deinit(struct watchpoint *wp)
 {
 	if (wp->rhead.names) {
-		debug(1, ("%s: recent status expired", wp->dirname));
+		debug(1, (_("%s: recent status expired"), wp->dirname));
 		watchpoint_recent_unlink(wp);
 		grecs_symtab_free(wp->rhead.names);
 		wp->rhead.names = NULL;
@@ -201,7 +211,7 @@ watchpoint_install(const char *path, int *pnew)
 		ent->wpt = wpt;
 	}
 	if (!ent)
-		abort(); /* FIXME */
+		nomem_abend();
 	watchpoint_ref(ent->wpt);
 	if (pnew)
 		*pnew = install;
@@ -283,8 +293,14 @@ watchpoint_destroy(struct watchpoint *wpt)
 void
 watchpoint_suspend(struct watchpoint *wpt)
 {
-	if (!wpt->parent) /* A top-level watchpoint */
-		watchpoint_install_sentinel(wpt);//FIXME: error checking
+	if (!wpt->parent) { /* A top-level watchpoint */
+		if (watchpoint_install_sentinel(wpt)) {
+			diag(LOG_CRIT,
+			     _("%s: failed to install sentinel; exiting now"),
+			     wpt->dirname);
+			stop = 1;
+		}
+	}
 	watchpoint_destroy(wpt);
 	if (grecs_symtab_count(nametab) == 0) {
 		diag(LOG_CRIT, _("no watchers left; exiting now"));
@@ -372,16 +388,10 @@ directory_sentinel_handler_run(struct watchpoint *wp, event_mask *event,
 	struct watchpoint *parent = sentinel->watchpoint;
 	char *filename;
 	struct stat st;
-	int filemask = sysev_filemask(parent);
+	int filemask = watchpoint_filemask(parent);
 	struct watchpoint *wpt;
 	int rc = 0;
 	
-        //FIXME: Do that in sysev_filemask?  See also watch_subdirs
-	if (parent->depth)
-		filemask |= S_IFDIR;
-	else
-		filemask &= ~S_IFDIR;
-
 	filename = mkfilename(dirname, file);
 	if (!filename) {
 		diag(LOG_ERR,
@@ -512,7 +522,7 @@ deliver_ev_create(struct watchpoint *wp, const char *dirname, const char *name,
 
 	if (watchpoint_recent_lookup(wp, name))
 		return;
-	debug(1, ("delivering CREATE for %s %s", dirname, name));
+	debug(1, (_("delivering CREATE for %s %s"), dirname, name));
 	for_each_handler(wp, itr, hp) {
 		event_mask m;
 		if (evtand(&event, &hp->ev_mask, &m) &&
@@ -548,11 +558,7 @@ watch_subdirs(struct watchpoint *parent, int notify)
 	if (!parent->isdir)
 		return 0;
 
-	filemask = sysev_filemask(parent);
-	if (parent->depth)
-		filemask |= S_IFDIR;
-	else
-		filemask &= ~S_IFDIR;
+	filemask = watchpoint_filemask(parent);
 	if (filemask == 0 && !notify) {
 		return 0;
 	}
