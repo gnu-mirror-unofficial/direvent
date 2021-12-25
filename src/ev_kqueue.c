@@ -214,8 +214,6 @@ process_event(struct kevent *ep)
 		return;
 	}
 
-	ev_log(ep->fflags, dp);
-
 	/* Translate system events to generic ones. */
 	evtrans_sys_to_gen(ep->fflags, genev_xlat, &event);
 #ifdef NOTE_CLOSE_WRITE
@@ -230,7 +228,8 @@ process_event(struct kevent *ep)
 		}
 	}
 #endif
-	//FIXME: log generic events
+	if (debug_level > 0)
+		ev_log(LOG_DEBUG, dp, event, NULL);
 
 	/* 
 	 * If the event was reported for a non-directory, run user-installed

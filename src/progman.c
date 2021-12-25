@@ -363,59 +363,59 @@ static void
 runcmd(const char *cmd, char **envhint, event_mask *event, const char *file,
        int shell)
 {
-	char *kve[13];
-	char *p,*q;
 	char buf[1024];
-	int i = 0, j;
 	char **argv;
 	char *xargv[4];
 	struct wordsplit ws;
-	
-	kve[i++] = "file";
-	kve[i++] = (char*) file;
+	enum {
+		ENV_FILE,
+		VAL_FILE,
+
+		ENV_SYSEV_CODE,
+		VAL_SYSEV_CODE,
+
+		ENV_GENEV_CODE,
+		VAL_GENEV_CODE,
+
+		ENV_SYSEV_NAME,
+		VAL_SYSEV_NAME,
+
+		ENV_GENEV_NAME,
+		VAL_GENEV_NAME,
+
+		ENV_SELF_TEST_PID,
+		VAL_SELF_TEST_PID,
+
+		ENV_NULL,
+		KVE_COUNT
+	};
+	char *kve[KVE_COUNT];
+		
+	kve[ENV_FILE] = "file";
+	kve[VAL_FILE] = (char*) file;
 	
 	snprintf(buf, sizeof buf, "%d", event->sys_mask);
-	kve[i++] = "sysev_code";
-	kve[i++] = estrdup(buf);
+	kve[ENV_SYSEV_CODE] = "sysev_code";
+	kve[VAL_SYSEV_CODE] = estrdup(buf);
+
+	snprintf(buf, sizeof buf, "%d", event->gen_mask);
+	kve[ENV_GENEV_CODE] = "genev_code";
+	kve[VAL_GENEV_CODE] = estrdup(buf);
+
+	if (ev_format(*event, &kve[VAL_GENEV_NAME], &kve[VAL_SYSEV_NAME]))
+		nomem_abend();
+
+	kve[ENV_GENEV_NAME] = "genev_name";
+	kve[ENV_SYSEV_NAME] = "sysev_name";
 
 	if (self_test_pid) {
 		snprintf(buf, sizeof buf, "%lu", (unsigned long)self_test_pid);
-		kve[i++] = "self_test_pid";
-		kve[i++] = estrdup(buf);
-	}
+		kve[ENV_SELF_TEST_PID] = "self_test_pid";
+		kve[VAL_SELF_TEST_PID] = estrdup(buf);
+	} else
+		kve[ENV_SELF_TEST_PID] = NULL;
 	
-	q = buf;
-	for (p = trans_tokfirst(sysev_transtab, event->sys_mask, &j); p;
-	     p = trans_toknext(sysev_transtab, event->sys_mask, &j)) {
-		if (q > buf)
-			*q++ = ' ';
-		while (*p)
-			*q++ = *p++;
-	}
-	*q = 0;	
-	if (q > buf) {
-		kve[i++] = "sysev_name";
-		kve[i++] = estrdup(buf);
-	}
-
-	snprintf(buf, sizeof buf, "%d", event->gen_mask);
-	kve[i++] = "genev_code";
-	kve[i++] = estrdup(buf);
-	
-	q = buf;
-	for (p = trans_tokfirst(genev_transtab, event->gen_mask, &j); p;
-	     p = trans_toknext(genev_transtab, event->gen_mask, &j)) {
-		if (q > buf)
-			*q++ = ' ';
-		while (*p)
-			*q++ = *p++;
-	}
-	*q = 0;	
-	if (q > buf) {
-		kve[i++] = "genev_name";
-		kve[i++] = estrdup(buf);;
-	}
-	kve[i++] = 0;
+	kve[ENV_NULL] = NULL;
 
 	ws.ws_env = (const char **) kve;
 	if (wordsplit(cmd, &ws,

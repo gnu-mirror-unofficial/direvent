@@ -253,6 +253,24 @@ trans_tokfirst(struct transtab *tab, int tok, int *next)
 	*next = 0;
 	return trans_toknext(tab, tok, next);
 }
+
+/*
+ * Compute translation table statistics.
+ * Returns number of elements in the table.  If PSIZE is not NULL,
+ * it is initialized with the cumulative length of name fields.
+ */
+size_t
+trans_stat(struct transtab *tab, size_t *psize)
+{
+	size_t i;
+	size_t size = 0;
+	for (i = 0; tab[i].name; i++)
+		size += strlen(tab[i].name);
+	if (psize)
+		*psize = size;
+	return i;
+}
+	
 
 
 /* Command line processing and auxiliary functions */
@@ -373,18 +391,100 @@ setuser(const char *user)
 	}
 }
 
-void
-ev_log(int flags, struct watchpoint *dp)
+/*
+ * Format flags as a space-delimited string according to the translation table
+ * tab.  The string is allocated.  If psize points to a non-zero value, this
+ * value is used as the length of the buffer to allocate for the result.  If
+ * it points to a zero value, buffer size is computed using trans_stat and
+ * stored in *psize upon return.
+ */
+static char *
+flags_format(int flags, struct transtab *tab, size_t *psize)
 {
-	int i;
-	char *p;
+	size_t size = *psize;
+	char *buf;
 	
-	if (debug_level > 0) {
-		for (p = trans_tokfirst(sysev_transtab, flags, &i); p;
-		     p = trans_toknext(sysev_transtab, flags, &i))
-			debug(1, ("%s: %s", dp->dirname, p));
+	if (!size) {
+		size_t count = trans_stat(tab, &size);
+		size += count;
+		*psize = size;
 	}
+	buf = malloc(size + 1);
+	if (buf) {
+		char *p, *q;
+		int i;
+
+		q = buf;
+		for (p = trans_tokfirst(tab, flags, &i); p;
+		     p = trans_toknext(tab, flags, &i)) {
+			if (q > buf)
+				*q++ = ' ';
+			while (*p)
+				*q++ = *p++;
+		}
+		*q = 0;	
+	}
+	return buf;
 }
+
+/*
+ * Format event_mask ev as two strings.
+ * On success, stores the generic event names in *gen, and system event names
+ * in *sys (both formatted as a space-delimited list of names).  If either
+ * of them is NULL, the corresponding value is not computed.
+ * Returns 0 on success and -1 on error (out of memory).
+ */
+int
+ev_format(event_mask ev, char **gen, char **sys)
+{
+	static size_t gen_size, sys_size;
+	int r = 0;
+	
+	if (gen) {
+		if ((*gen = flags_format(ev.gen_mask, genev_transtab,
+					 &gen_size)) == NULL)
+			r = -1;
+	}
+	
+	if (sys) {
+		if ((*sys = flags_format(ev.sys_mask, sysev_transtab,
+					 &sys_size)) == NULL) {
+			free(gen);
+			*gen = NULL;
+			r = -1;
+		}
+	}
+
+	return r;
+}
+
+/*
+ * Log event ev occurred on watchpoint dp with the priority prio.
+ * Unless NULL, prefix supplies additional explanatory string.
+ */
+void
+ev_log(int prio, struct watchpoint *dp, event_mask ev, char *prefix)
+{
+	char *sys, *gen;
+
+	if (ev_format(ev, &gen, &sys)) {
+		diag(LOG_ERR, "%s", _("out of memory"));
+		return;
+	}
+
+	if (prefix) {
+		diag(prio, "%s: %s: system events: %s", dp->dirname, prefix,
+		     sys);
+		diag(prio, "%s: %s: generic events: %s", dp->dirname, prefix,
+		     gen);
+	} else {
+		diag(prio, "%s: system events: %s", dp->dirname, sys);
+		diag(prio, "%s: generic events: %s", dp->dirname, gen);
+	}
+	free(sys);
+	free(gen);
+}
+
 
 int signo = 0;
 int stop = 0;

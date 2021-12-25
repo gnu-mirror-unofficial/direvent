@@ -235,8 +235,6 @@ process_event(struct inotify_event *ep)
 		return;
 	}
 
-	ev_log(ep->mask, wpt);
-
 	if (ep->mask & IN_CREATE) {		
 		debug(1, (_("%s/%s created"), wpt->dirname, ep->name));
 		if (watchpoint_recent_lookup(wpt, ep->name)) {
@@ -249,9 +247,18 @@ process_event(struct inotify_event *ep)
 
 	if (ep->len == 0) {
 		if (wpt->isdir) {
-			diag(LOG_NOTICE,
-			     _("%s: ignoring event for the watchpoint directory"),
-			     wpt->dirname);
+			char *sys_str = NULL;
+			event.sys_mask = ep->mask;
+			if (ev_format(event, NULL, &sys_str))
+				diag(LOG_NOTICE,
+				     _("%s: ignoring event (%x) for the watchpoint directory"),
+				     wpt->dirname, ep->mask);
+			else {
+				diag(LOG_NOTICE,
+				     _("%s: ignoring event (%s) for the watchpoint directory"),
+				     wpt->dirname, sys_str);
+				free(sys_str);
+			}
 			return;
 		}
 		filename = split_pathname(wpt, &dirname);
@@ -271,7 +278,9 @@ process_event(struct inotify_event *ep)
 			event.gen_mask |= GENEV_CHANGE;
 		}
 	}
-	
+	if (debug_level > 0)
+		ev_log(LOG_DEBUG, wpt, event, ep->name);
+
 	watchpoint_run_handlers(wpt, event, dirname, filename);
 	
 	unsplit_pathname(wpt);

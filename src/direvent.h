@@ -250,7 +250,8 @@ int watch_pathname(struct watchpoint *parent, const char *dirname, int isdir, in
 char *split_pathname(struct watchpoint *dp, char **dirname);
 void unsplit_pathname(struct watchpoint *dp);
 
-void ev_log(int flags, struct watchpoint *dp);
+int ev_format(event_mask ev, char **gen, char **sys);
+void ev_log(int prio, struct watchpoint *dp, event_mask ev, char *prefix);
 void deliver_ev_create(struct watchpoint *dp,
 		       const char *dirname, const char *filename,
 		       int notify);
