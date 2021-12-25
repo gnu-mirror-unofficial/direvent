@@ -24,12 +24,12 @@
 
 /* Process list */
 
-/* Redirector codes */
-#define REDIR_OUT 0
-#define REDIR_ERR 1
+/* Logger codes */
+#define LOGGER_OUT 0
+#define LOGGER_ERR 1
 
 #define PROC_HANDLER  0
-#define PROC_REDIR    1
+#define PROC_LOGGER    1
 /* Special types for use in print_status: */
 #define PROC_SELFTEST 2
 #define PROC_FOREIGN  3
@@ -56,11 +56,11 @@ struct process {
 	pid_t pid;              /* PID */
 	time_t start;           /* Time when the process started */
 	union {
-		struct process *redir[2];
-                /* Pointers to the redirector processes, if
-		   type == PROC_HANDLER (NULL if no redirector) */
+                /* Pointers to logger processes, if
+		   type == PROC_HANDLER (NULL if no logger) */
+		struct process *logger[2];
+                /* Master process, if type == PROC_LOGGER */
 		struct process *master;
-                /* Master process, if type == PROC_REDIR */
 	} v;
 };
 
@@ -230,10 +230,10 @@ process_cleanup(int expect_term)
 				continue;
 
 			if (p->type == PROC_HANDLER) {
-				if (p->v.redir[REDIR_OUT])
-					p->v.redir[REDIR_OUT]->v.master = NULL;
-				if (p->v.redir[REDIR_ERR])
-					p->v.redir[REDIR_ERR]->v.master = NULL;
+				if (p->v.logger[LOGGER_OUT])
+					p->v.logger[LOGGER_OUT]->v.master = NULL;
+				if (p->v.logger[LOGGER_ERR])
+					p->v.logger[LOGGER_ERR]->v.master = NULL;
 			}
 			p->pid = 0;
 			proc_unlink(&proc_list, p);
@@ -243,7 +243,7 @@ process_cleanup(int expect_term)
 }
 
 void
-process_timeouts()
+process_timeouts(void)
 {
 	struct process *p;
 	time_t now = time(NULL);
@@ -266,7 +266,7 @@ process_timeouts()
 			  (unsigned long) alarm_time));
 		alarm(alarm_time);
 	}
-	debug(3, ("end scanning process list"));
+	debug(3, ("%s", _("end scanning process list")));
 }
 
 int
@@ -297,16 +297,16 @@ switchpriv(struct prog_handler *hp)
 	return 0;
 }		
 
-/* Operations with handlers and redirections */
+/* Operations with handlers and loggers */
 
 static void
-redir_exit(int sig)
+logger_exit(int sig)
 {
 	_exit(0);
 }
 
 int
-open_redirector(const char *tag, int prio, struct process **return_proc)
+open_logger(const char *tag, int prio, struct process **return_proc)
 {
 	int p[2];
 	FILE *fp;
@@ -316,18 +316,18 @@ open_redirector(const char *tag, int prio, struct process **return_proc)
 	
 	if (pipe(p)) {
 		diag(LOG_ERR,
-		     _("cannot start redirector for %s, pipe failed: %s"),
+		     _("cannot start logger for %s, pipe failed: %s"),
 		     tag, strerror(errno));
 		return -1;
 	}
 	switch (pid = fork()) {
 	case 0:
-		/* Redirector process */
+		/* Logger process */
 		close_fds(p[0] + 1);
 		for (i = 3; i < p[0]; i++)
 			close(i);
 		alarm(0);
-		signal_setup(redir_exit);
+		signal_setup(logger_exit);
 
 		fp = fdopen(p[0], "r");
 		if (fp == NULL)
@@ -345,15 +345,15 @@ open_redirector(const char *tag, int prio, struct process **return_proc)
       
 	case -1:
 		diag(LOG_CRIT,
-		     _("cannot run redirector `%s': fork failed: %s"),
+		     _("cannot run logger `%s': fork failed: %s"),
 		     tag, strerror(errno));
 		return -1;
 
 	default:
-		debug(3, (_("redirector for %s started, pid=%lu"),
+		debug(3, (_("logger for %s started, pid=%lu"),
 			  tag, (unsigned long) pid));
 		close(p[0]);
-		*return_proc = register_process(PROC_REDIR, pid, 
+		*return_proc = register_process(PROC_LOGGER, pid, 
 						time(NULL), 0);
 		return p[1];
 	}
@@ -448,8 +448,8 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 		 const char *dirname, const char *file, void *data, int notify)
 {
 	pid_t pid;
-	int redir_fd[2] = { -1, -1 };
-	struct process *redir_proc[2] = { NULL, NULL };
+	int logger_fd[2] = { -1, -1 };
+	struct process *logger_proc[2] = { NULL, NULL };
 	struct process *p;
 	struct prog_handler *hp = data;
 
@@ -459,21 +459,21 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 	debug(1, (_("starting %s, dir=%s, file=%s"),
 		  hp->command, dirname, file));
 	if (hp->flags & HF_STDERR)
-		redir_fd[REDIR_ERR] = open_redirector(hp->command, LOG_ERR,
-						      &redir_proc[REDIR_ERR]);
+		logger_fd[LOGGER_ERR] = open_logger(hp->command, LOG_ERR,
+						    &logger_proc[LOGGER_ERR]);
 	if (hp->flags & HF_STDOUT)
-		redir_fd[REDIR_OUT] = open_redirector(hp->command, LOG_INFO,
-						      &redir_proc[REDIR_OUT]);
+		logger_fd[LOGGER_OUT] = open_logger(hp->command, LOG_INFO,
+						    &logger_proc[LOGGER_OUT]);
 	
 	pid = fork();
 	if (pid == -1) {
 		diag(LOG_ERR, "fork: %s", strerror(errno));
-		close(redir_fd[REDIR_OUT]);
-		close(redir_fd[REDIR_ERR]);
-		if (redir_proc[REDIR_OUT])
-			kill(redir_proc[REDIR_OUT]->pid, SIGKILL);
-		if (redir_proc[REDIR_ERR])
-			kill(redir_proc[REDIR_ERR]->pid, SIGKILL);
+		close(logger_fd[LOGGER_OUT]);
+		close(logger_fd[LOGGER_ERR]);
+		if (logger_proc[LOGGER_OUT])
+			kill(logger_proc[LOGGER_OUT]->pid, SIGKILL);
+		if (logger_proc[LOGGER_ERR])
+			kill(logger_proc[LOGGER_ERR]->pid, SIGKILL);
 		return -1;
 	}
 	
@@ -490,17 +490,17 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 			_exit(127);
 		}
 
-		if (redir_fd[REDIR_OUT] != -1) {
-			if (redir_fd[REDIR_OUT] != 1 &&
-			    dup2(redir_fd[REDIR_OUT], 1) == -1) {
+		if (logger_fd[LOGGER_OUT] != -1) {
+			if (logger_fd[LOGGER_OUT] != 1 &&
+			    dup2(logger_fd[LOGGER_OUT], 1) == -1) {
 				diag(LOG_ERR, "dup2: %s", strerror(errno));
 				_exit(127);
 			}
 			keepfd[1] = 1;
 		}
-		if (redir_fd[REDIR_ERR] != -1) {
-			if (redir_fd[REDIR_ERR] != 2 &&
-			    dup2(redir_fd[REDIR_ERR], 2) == -1) {
+		if (logger_fd[LOGGER_ERR] != -1) {
+			if (logger_fd[LOGGER_ERR] != 2 &&
+			    dup2(logger_fd[LOGGER_ERR], 2) == -1) {
 				diag(LOG_ERR, "dup2: %s", strerror(errno));
 				_exit(127);
 			}
@@ -523,18 +523,18 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 
 	p = register_process(PROC_HANDLER, pid, time(NULL), hp->timeout);
 
-	if (redir_proc[REDIR_OUT]) {
-		redir_proc[REDIR_OUT]->v.master = p;
-		redir_proc[REDIR_OUT]->timeout = hp->timeout;
+	if (logger_proc[LOGGER_OUT]) {
+		logger_proc[LOGGER_OUT]->v.master = p;
+		logger_proc[LOGGER_OUT]->timeout = hp->timeout;
 	}
-	if (redir_proc[REDIR_ERR]) {
-		redir_proc[REDIR_ERR]->v.master = p;
-		redir_proc[REDIR_ERR]->timeout = hp->timeout;
+	if (logger_proc[LOGGER_ERR]) {
+		logger_proc[LOGGER_ERR]->v.master = p;
+		logger_proc[LOGGER_ERR]->timeout = hp->timeout;
 	}
-	memcpy(p->v.redir, redir_proc, sizeof(p->v.redir));
+	memcpy(p->v.logger, logger_proc, sizeof(p->v.logger));
 	
-	close(redir_fd[REDIR_OUT]);
-	close(redir_fd[REDIR_ERR]);
+	close(logger_fd[LOGGER_OUT]);
+	close(logger_fd[LOGGER_ERR]);
 
 	if (hp->flags & HF_NOWAIT) {
 		return 0;
