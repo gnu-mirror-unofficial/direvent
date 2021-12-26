@@ -184,14 +184,22 @@ main(int argc, char **argv)
 	char **itab = NULL;
 	pid_t pid = 0;
 	int sig = SIGHUP;
+	int print_args = 1;
+	int print_cwd = 1;
 	
 	progname = strrchr(argv[0], '/');
 	if (progname)
 		progname++;
 	else
 		progname = argv[0];
-	while ((i = getopt(argc, argv, "af:hi:k:s")) != EOF)
+	while ((i = getopt(argc, argv, "ADaf:hi:k:s")) != EOF)
 		switch (i) {
+		case 'A':
+			print_args = 0;
+			break;
+		case 'D':
+			print_cwd = 0;
+			break;
 		case 'a':
 			mode = "a";
 			break;
@@ -199,7 +207,7 @@ main(int argc, char **argv)
 			file = optarg;
 			break;
 		case 'h':
-			printf("usage: %s [-ahsx] [-f FILE] [-i INCLUDELIST] [-k [@]PID[:SIG]] [ARGS...]\n",
+			printf("usage: %s [-ahnsx] [-f FILE] [-i INCLUDELIST] [-k [@]PID[:SIG]] [ARGS...]\n",
 			       progname);
 			return 0;
 		case 's':
@@ -226,15 +234,18 @@ main(int argc, char **argv)
 		fp = stderr;
 	
 	fprintf(fp, "# Dump of execution environment\n");
-	p = agetcwd();
-	if (p) {
-		fprintf(fp, "cwd is %s\n", p);
-		free(p);
+	if (print_cwd) {
+		p = agetcwd();
+		if (p) {
+			fprintf(fp, "cwd is %s\n", p);
+			free(p);
+		}
 	}
-	fprintf(fp, "# Arguments\n");
-	for (i = 0; i < argc; i++)
-		fprintf(fp, "argv[%d]=%s\n", i, argv[i]);
-
+	if (print_args) {
+		fprintf(fp, "# Arguments\n");
+		for (i = 0; i < argc; i++)
+			fprintf(fp, "argv[%d]=%s\n", i, argv[i]);
+	}
 	if (sortenv) {
 		for (i = 0; environ[i]; i++);
 		qsort(environ, i, sizeof(environ[0]), compenv);

@@ -51,6 +51,13 @@ TESTSUITE_AT = \
   env01.at\
   env02.at\
   env03.at\
+  env04.at\
+  env05.at\
+  env06.at\
+  envleg00.at\
+  envleg01.at\
+  envleg02.at\
+  envleg03.at\
   file.at\
   glob01.at\
   glob02.at\

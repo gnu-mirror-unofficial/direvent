@@ -20,6 +20,8 @@
 #include <grp.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <ctype.h>
+#include <grecs.h>
 #include "wordsplit.h"
 
 /* Process list */
@@ -359,14 +361,164 @@ open_logger(const char *tag, int prio, struct process **return_proc)
 	}
 }
 
+extern char **environ;    /* Environment */
+
+static struct defenv {
+	char *name;
+	char *value;
+} defenv[] = {
+	{ "DIREVENT_SYSEV_CODE", "${sysev_code}" },
+	{ "DIREVENT_SYSEV_NAME", "${sysev_name}" },
+	{ "DIREVENT_GENEV_CODE", "${genev_code}" },
+	{ "DIREVENT_GENEV_NAME", "${genev_name}" },
+	{ "DIREVENT_FILE", "${file}" },
+	{ NULL }
+};
+
+static char *internalvars[] = {
+	"sysev_code",
+	"sysev_name",
+	"genev_code",
+	"genev_name",
+	"file",
+	"self_test_pid",
+	NULL
+};
+
+int
+parse_legacy_env(char **argv, envop_t **envop)
+{
+	size_t i = 0;
+	char *name;
+
+	if (strcmp(argv[0], "-") == 0 || strcmp(argv[0], "--") == 0) {
+		int j;
+
+		if (envop_entry_add(envop, envop_clear, NULL, NULL))
+			return -1;
+		i++;
+
+		for (j = 0; internalvars[j]; j++) {
+			if (envop_entry_add(envop, envop_keep,
+					    internalvars[j], NULL))
+				return -1;
+		}
+		
+		if (argv[0][1] == 0) {
+			for (j = 0; defenv[j].name; j++) {
+				if (envop_entry_add(envop, envop_keep,
+						    defenv[j].name, NULL))
+					return -1;
+			}
+			if (envop_entry_add(envop, envop_keep,
+					    "DIREVENT_SELF_TEST_PID", NULL))
+				return -1;
+		}
+	}
+	for (; (name = argv[i]) != NULL; i++) {
+		char *name = argv[i];
+		size_t len = strcspn(name, "=");
+		char *value;
+		char *mem = NULL;
+		size_t msize = 0;
+		enum envop_code code;
+		int rc;
+		
+		if (name[0] == '-') {
+			/* Unset directive */
+			name++;
+			len--;
+			
+			if (name[len]) {
+				name[len] = 0;
+				value = name + len + 1;
+			} else
+				value = NULL;
+
+			code = envop_unset;
+		} else if (name[len]) {
+			size_t vlen;
+
+			if (len == 0)
+                                /* Skip erroneous entry */
+				continue;
+			value = name + len + 1;
+			vlen = strlen(value);
+			name[len] = 0;
+			if (name[len-1] == '+') {
+				name[--len] = 0;
+				if (ispunct(value[0])) {
+					msize = 2*len + 9 + vlen + 1;
+					mem = grecs_malloc(msize);
+					snprintf(mem, msize,
+						 "${%s:-}${%s:+%c}%s",
+						 name, name, value[0],
+						 value + 1);
+				} else {
+					msize = len + vlen + 6;
+					mem = grecs_malloc(msize);
+					snprintf(mem, msize,
+						 "${%s:-}%s",
+						 name, value);
+				}
+				value = mem;
+			} else if (value[0] == '+') {
+				value++;
+				vlen--;
+
+				if (vlen > 0 && ispunct(value[vlen-1])) {
+					int c = value[vlen-1];
+					value[--vlen] = 0;
+
+					msize = 2*len + 10 + vlen + 1;
+					mem = grecs_malloc(msize);
+					snprintf(mem, msize,
+						 "%s${%s:+%c}${%s:-}",
+						 value, name, c, name);
+				} else {
+					msize = len + vlen + 6;
+					mem = grecs_malloc(msize);
+					snprintf(mem, msize,
+						 "%s${%s:-}",
+						 value, name);
+				}
+				value = mem;
+			}
+			code = envop_set;
+		} else {
+			value = NULL;
+			code = envop_keep;
+		}
+		rc = envop_entry_add(envop, code, name, value);
+		free(mem);
+		if (rc)
+			return -1;
+	}
+	return 0;
+}
+
+static inline void
+debug_environ(int lev, environ_t *env, char *text)
+{
+	if (debug_level >= lev) {
+		int i;
+		char **envp = environ_ptr(env);
+		diag(LOG_DEBUG, "%s: ", text);
+		for (i = 0; envp[i]; i++)
+			diag(LOG_DEBUG, "%d: %s", i, envp[i]);
+	}
+}
+
 static void
-runcmd(const char *cmd, char **envhint, event_mask *event, const char *file,
-       int shell)
+runcmd(struct prog_handler *hp, event_mask *event, const char *file)
 {
 	char buf[1024];
 	char **argv;
+	environ_t *env;
 	char *xargv[4];
 	struct wordsplit ws;
+	int i;
+	
 	enum {
 		ENV_FILE,
 		VAL_FILE,
@@ -417,29 +569,54 @@ runcmd(const char *cmd, char **envhint, event_mask *event, const char *file,
 	
 	kve[ENV_NULL] = NULL;
 
-	ws.ws_env = (const char **) kve;
-	if (wordsplit(cmd, &ws,
-		      WRDSF_NOCMD | WRDSF_QUOTE
-		      | WRDSF_SQUEEZE_DELIMS | WRDSF_CESCAPES
-		      | WRDSF_ENV | WRDSF_ENV_KV
-		      | (shell ? WRDSF_NOSPLIT : 0))) {
-		diag(LOG_CRIT, "wordsplit: %s",
-		     wordsplit_strerror (&ws));
+	env = environ_create(environ);
+	for (i = 0; kve[i]; i += 2)
+		environ_set(env, kve[i], kve[i+1]);
+		
+	for (i = 0; defenv[i].name; i++) {
+		environ_set(env, defenv[i].name, defenv[i].value);
+	}	
+	if (self_test_pid)
+		environ_set(env, "DIREVENT_SELF_TEST_PID",
+			    kve[VAL_SELF_TEST_PID]);
+	
+	if (envop_exec(direvent_envop, env) || envop_exec(hp->envop, env)) {
+		diag(LOG_CRIT, "envop_exec failed: %s", strerror(errno));
 		_exit(127);
 	}
+	if (!(hp->flags & HF_SHELL)) {
+		for (i = 0; kve[i]; i += 2) {
+			environ_unset(env, kve[i], kve[i+1]);
+		}
+	}
 	
-	if (shell) {
-		xargv[0] = "/bin/sh";
+	debug_environ(4, env, "modified environment");
+
+	if (hp->flags & HF_SHELL) {
+		xargv[0] = (char*) environ_get(env, "SHELL");
+		if (!xargv[0])
+			xargv[0] = "/bin/sh";
 		xargv[1] = "-c";
-		xargv[2] = ws.ws_wordv[0];
+		xargv[2] = hp->command;
 		xargv[3] = NULL;
 		argv = xargv;
-	} else
+	} else {
+		ws.ws_env = (const char **) kve;
+		if (wordsplit(hp->command, &ws,
+			      WRDSF_NOCMD | WRDSF_QUOTE
+			      | WRDSF_SQUEEZE_DELIMS | WRDSF_CESCAPES
+			      | WRDSF_ENV | WRDSF_ENV_KV)) {
+			diag(LOG_CRIT, "wordsplit: %s",
+			     wordsplit_strerror(&ws));
+			_exit(127);
+		}
 		argv = ws.ws_wordv;
+	}
 
-	execve(argv[0], argv, environ_setup(envhint, kve));
+	execve(argv[0], argv, environ_ptr(env));
 
-	diag(LOG_ERR, "execve: %s \"%s\": %s", argv[0], cmd, strerror(errno));
+	diag(LOG_ERR, "execve: %s \"%s\": %s", argv[0], hp->command,
+	     strerror(errno));
 	_exit(127);
 }
 
@@ -514,7 +691,7 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 			close(2);
 		alarm(0);
 		signal_setup(SIG_DFL);
-		runcmd(hp->command, hp->env, event, file, hp->flags & HF_SHELL);
+		runcmd(hp, event, file);
 	}
 
 	/* master */
@@ -551,24 +728,12 @@ prog_handler_run(struct watchpoint *wp, event_mask *event,
 	return 0;
 }
 
-static void
-envfree(char **env)
-{
-	int i;
-
-	if (!env)
-		return;
-	for (i = 0; env[i]; i++)
-		free(env[i]);
-	free(env);
-}
-
 void
 prog_handler_free(struct prog_handler *hp)
 {
 	free(hp->command);
 	free(hp->gidv);
-	envfree(hp->env);
+	envop_free(hp->envop);
 }
 
 static void
@@ -593,29 +758,6 @@ prog_handler_alloc(event_mask ev_mask, filpatlist_t fpat,
 	hp->data = mem;
 	memset(p, 0, sizeof(*p));
 	return hp;
-}
-
-/* Reallocate environment of handler HP to accomodate COUNT more
-   entries (not bytes) plus a final NULL entry.
-
-   Return offset of the first unused entry.
-*/
-size_t
-prog_handler_envrealloc(struct prog_handler *hp, size_t count)
-{
-	size_t i;
-
-	if (!hp->env) {
-		hp->env = ecalloc(count + 1, sizeof(hp->env[0]));
-		i = 0;
-	} else {
-		for (i = 0; hp->env[i]; i++)
-			;
-		hp->env = erealloc(hp->env,
-				   (i + count + 1) * sizeof(hp->env[0]));
-		memset(hp->env + i, 0, (count + 1) * sizeof(hp->env[0]));
-	}
-	return i;
 }
 
 

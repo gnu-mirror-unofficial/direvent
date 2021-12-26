@@ -22,8 +22,8 @@ debug 10;
 watcher {
 	path $cwd/dir;
 	event create;
-	command "echo SHELL=\$0 > $outfile;"
-	        "$TESTDIR/envdump -s -i DIREVENT_FILE=:DIREVENT_GENEV_ -af $outfile -k\$self_test_pid";
+	command "echo SHELL=\$0 > $outfile;\
+                 $TESTDIR/envdump -s -i DIREVENT_FILE=:DIREVENT_GENEV_ -af $outfile -k\$self_test_pid";
 	option (stdout,stderr,shell);
 }
 ],

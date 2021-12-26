@@ -19,6 +19,8 @@
 #include <pwd.h>
 #include <grp.h>
 
+envop_t *direvent_envop;
+
 static struct transtab kwpri[] = {
 	{ "emerg", LOG_EMERG },
 	{ "alert", LOG_ALERT },
@@ -505,54 +507,284 @@ cb_option(enum grecs_callback_command cmd, grecs_node_t *node,
 	}
 	return 0;
 }
+
+static char **
+config_array_to_argv(grecs_value_t *val, grecs_locus_t *locus)
+{
+	int i;
+	int argc;
+	char **argv;
+
+	argc = val->v.arg.c;
+	argv = grecs_calloc(argc + 1, sizeof(argv[0]));
+	for (i = 0; i < argc; i++) {
+		if (grecs_assert_value_type(val->v.arg.v[i],
+					    GRECS_TYPE_STRING, locus) == 0)
+			argv[i] = grecs_strdup(val->v.arg.v[i]->v.string);
+		else
+			break;
+	}
+	argv[i] = NULL;
+	return argv;
+}
+
+static char **
+config_list_to_argv(grecs_value_t *val, grecs_locus_t *locus)
+{
+	int i;
+	char **argv;
+	struct grecs_list_entry *ep;
+
+	argv = grecs_calloc(val->v.list->count + 1, sizeof(argv[0]));
+	for (ep = val->v.list->head, i = 0; ep; ep = ep->next, i++) {
+		grecs_value_t *vp = ep->data;
+		if (assert_grecs_value_type(&vp->locus, vp, GRECS_TYPE_STRING))
+			break;
+		argv[i] = grecs_strdup(vp->v.string);
+	}
+	argv[i] = NULL;
+	return argv;
+}	
+
+static void
+argv_free(char **argv)
+{
+	if (argv) {
+		size_t i;
+		for (i = 0; argv[i]; i++)
+			free(argv[i]);
+		free(argv);
+	}
+}
+
+static int
+_cb_env(envop_t **envop, grecs_value_t *value, grecs_locus_t *locus)
+{
+	char **argv;
+	int rc;
 	
+	switch (value->type) {
+	case GRECS_TYPE_STRING:
+		argv = grecs_calloc(2, sizeof(argv[0]));
+		argv[0] = grecs_strdup(value->v.string);
+		argv[1] = NULL;
+		break;
+      
+	case GRECS_TYPE_ARRAY:
+		argv = config_array_to_argv(value, locus);
+		break;
+
+	case GRECS_TYPE_LIST:
+		argv = config_list_to_argv(value, locus);
+		break;
+	}
+	
+	rc = parse_legacy_env(argv, envop);
+	argv_free(argv);
+	if (rc) {
+		grecs_error(locus, errno,
+			    _("can't parse legacy environ statement"));
+		return 1;
+	}
+	return 0;
+}
+
 static int
 cb_environ(enum grecs_callback_command cmd, grecs_node_t *node,
 	   void *varptr, void *cb_data)
 {
-        grecs_locus_t *locus = &node->locus;
-	grecs_value_t *val = node->v.value;
-	struct grecs_list_entry *ep;
-	int i, j;
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = &eventconf.prog_handler.envop;
+
+	switch (cmd) {
+	case grecs_callback_section_begin:
+		*(envop_t ***) cb_data = envop_ptr;
+		break;
+		
+	case grecs_callback_section_end:
+		break;
+		
+	case grecs_callback_set_value:
+		return _cb_env(envop_ptr, value, locus);
+	}
+	return 0;
+}
+
+static int
+cb_global_environ(enum grecs_callback_command cmd, grecs_node_t *node,
+		  void *varptr, void *cb_data)
+{
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = &direvent_envop;
+
+	switch (cmd) {
+	case grecs_callback_section_begin:
+		*(envop_t ***) cb_data = envop_ptr;
+		break;
+		
+	case grecs_callback_section_end:
+		break;
+		
+	case grecs_callback_set_value:
+		return _cb_env(envop_ptr, value, locus);
+	}
+	return 0;
+}
+
+static int
+_cb_env_clear(enum grecs_callback_command cmd,
+	      grecs_node_t *node,
+	      void *varptr, void *cb_data)
+{
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = varptr;
 	
-	ASSERT_SCALAR(cmd, locus);
-	switch (val->type) {
+	if (!GRECS_VALUE_EMPTY_P(value)) {
+		grecs_error(&value->locus, 0, "%s", _("unexpected argument"));
+		return 1;
+	}
+  
+	if (envop_entry_add(envop_ptr, envop_clear, NULL, NULL))
+		grecs_error(locus, errno, "envop_entry_add");
+	
+	return 0;
+}
+
+static int
+_cb_env_keep(enum grecs_callback_command cmd,
+	     grecs_node_t *node,
+	     void *varptr, void *cb_data)
+{
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = varptr;
+	char *p;
+	char **argv;
+	int i;
+	
+	switch (value->type) {
 	case GRECS_TYPE_STRING:
-		if (assert_grecs_value_type(&val->locus, val,
-					    GRECS_TYPE_STRING))
-			return 1;
-		i = prog_handler_envrealloc(&eventconf.prog_handler, 1);
-		eventconf.prog_handler.env[i] = estrdup(val->v.string);
-		eventconf.prog_handler.env[i+1] = NULL;
+		argv = grecs_calloc(2, sizeof(argv[0]));
+		argv[0] = grecs_strdup(value->v.string);
+		argv[1] = NULL;
 		break;
 		
 	case GRECS_TYPE_ARRAY:
-		j = prog_handler_envrealloc(&eventconf.prog_handler, val->v.arg.c);
-		for (i = 0; i < val->v.arg.c; i++, j++) {
-			if (assert_grecs_value_type(&val->v.arg.v[i]->locus,
-						    val->v.arg.v[i],
-						    GRECS_TYPE_STRING))
-				return 1;
-			eventconf.prog_handler.env[j] = estrdup(val->v.arg.v[i]->v.string);
-		}
-		eventconf.prog_handler.env[j] = NULL;
+		argv = config_array_to_argv(value, locus);
 		break;
-
+		
 	case GRECS_TYPE_LIST:
-		j = prog_handler_envrealloc(&eventconf.prog_handler,
-					    val->v.list->count);
-		for (ep = val->v.list->head; ep; ep = ep->next, j++) {
-			grecs_value_t *vp = ep->data;
-			if (assert_grecs_value_type(&vp->locus, vp,
-						    GRECS_TYPE_STRING))
-				return 1;
-			eventconf.prog_handler.env[j] = estrdup(vp->v.string);
-		}
-		eventconf.prog_handler.env[j] = NULL;
+		argv = config_list_to_argv(value, locus);
+		break;
 	}
+	
+	if (envop_entry_add(envop_ptr, envop_clear, NULL, NULL))
+		grecs_error(locus, errno, "envop_entry_add");
+	for (i = 0; argv[i]; i++) {
+		p = strchr(argv[i], '=');
+		if (p)
+			*p++ = 0;
+		if (envop_entry_add(envop_ptr, envop_keep, argv[i], p))
+			grecs_error(locus, errno, "envop_entry_add");
+	}
+	argv_free(argv);
 	return 0;
-}		
+}
 
+static int
+_cb_env_set(enum grecs_callback_command cmd,
+	    grecs_node_t *node,
+	    void *varptr, void *cb_data)
+{
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = varptr;
+	char *p;
+	
+	if (grecs_assert_node_value_type(cmd, node, GRECS_TYPE_STRING))
+		return 1;
+	p = strchr(value->v.string, '=');
+	if (p)
+		*p++ = 0;
+	if (envop_entry_add(envop_ptr, envop_set, value->v.string, p))
+		grecs_error(locus, errno, "envop_entry_add");
+	return 0;
+}
+
+static int
+_cb_env_eval(enum grecs_callback_command cmd,
+	     grecs_node_t *node,
+	     void *varptr, void *cb_data)
+{
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = varptr;
+	
+	if (grecs_assert_node_value_type(cmd, node, GRECS_TYPE_STRING))
+		return 1;
+	if (envop_entry_add(envop_ptr, envop_set, NULL, value->v.string))
+		grecs_error(locus, errno, "envop_entry_add");
+	return 0;
+}
+
+static int
+_cb_env_unset(enum grecs_callback_command cmd,
+	      grecs_node_t *node,
+	      void *varptr, void *cb_data)
+{
+	grecs_locus_t *locus = &node->locus;
+	grecs_value_t *value = node->v.value;
+	envop_t **envop_ptr = varptr;
+	char *p;
+
+	if (grecs_assert_node_value_type(cmd, node, GRECS_TYPE_STRING))
+		return 1;
+	p = strchr(value->v.string, '=');
+	if (p)
+		*p++ = 0;
+	if (envop_entry_add(envop_ptr, envop_unset, value->v.string, p))
+		grecs_error(locus, errno, "envop_entry_add");
+	return 0;
+}
+
+struct grecs_keyword cb_env_keywords[] = {
+	{ "clear",
+	  "",
+	  N_("Clear environment."),
+	  grecs_type_bool, GRECS_DFLT,
+	  NULL, 0,
+	  _cb_env_clear },
+	{ "keep",
+	  N_("name[=value]"),
+	  N_("Keep this variable. Unless value is supplied, name can contain wildcards.\n"
+	     "Implies \"clear\"."),
+	  grecs_type_string, GRECS_DFLT,
+	  NULL, 0,
+	  _cb_env_keep },
+	{ "set",
+	  N_("name=value"),
+	  N_("Set environment variable. Note, that argument must be quoted."),
+	  grecs_type_string, GRECS_DFLT,
+	  NULL, 0,
+	  _cb_env_set },
+	{ "eval",
+	  N_("string"),
+	  N_("Evaluate string. Useful for side-effects, e.g. eval ${X:=2}."),
+	  grecs_type_string, GRECS_DFLT,
+	  NULL, 0,
+	  _cb_env_eval },
+	{ "unset",
+	  N_("name"),
+	  N_("Unset environment variable. Name can contain wildcards."),
+	  grecs_type_string, GRECS_DFLT,
+	  NULL, 0,
+	  _cb_env_unset },
+	{ NULL }
+};
+
 static int
 file_name_pattern(filpatlist_t *fptr, grecs_value_t *val)
 {
@@ -614,8 +846,13 @@ static struct grecs_keyword watcher_kw[] = {
 	{ "option", NULL, N_("List of additional options"),
 	  grecs_type_string, GRECS_LIST, NULL, 0,
 	  cb_option },
+	{"environ", NULL,
+	 N_("Modify program environment."),
+	 grecs_type_section, GRECS_DFLT,
+	 NULL, 0,
+	 cb_environ, NULL, cb_env_keywords },
 	{ "environ", N_("<arg: string> <arg: string>..."),
-	  N_("Modify environment"),
+	  N_("Modify environment (legacy form)"),
 	  grecs_type_string, GRECS_DFLT, NULL, 0,
 	  cb_environ },
 	{ NULL }
@@ -632,6 +869,11 @@ static struct grecs_keyword direvent_kw[] = {
 	  grecs_type_section, GRECS_DFLT, NULL, 0, NULL, NULL, syslog_kw },
 	{ "debug", N_("level"), N_("Set debug level"),
 	  grecs_type_int, GRECS_DFLT, &debug_level },
+	{"environ", NULL,
+	 N_("Modify global program environment."),
+	 grecs_type_section, GRECS_DFLT,
+	 NULL, 0,
+	 cb_global_environ, NULL, cb_env_keywords },
 	{ "watcher", NULL, N_("Configure event watcher"),
 	  grecs_type_section, GRECS_DFLT, NULL, 0,
 	  cb_watcher, NULL, watcher_kw },
@@ -660,7 +902,6 @@ config_parse(char const *conffile)
 {
 	struct grecs_node *tree;
 
-	grecs_parser_options = GRECS_OPTION_QUOTED_STRING_CONCAT;
 	tree = grecs_parse(conffile);
 	if (!tree)
 		exit(1);

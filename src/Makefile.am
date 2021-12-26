@@ -21,13 +21,15 @@ direvent_SOURCES=\
  cmdline.h\
  closefds.c\
  config.c\
- environ.c\
+ envop.c\
+ envop.h\
  event.c\
  fnpat.c\
  handler.c\
  watcher.c\
  progman.c\
- sigv.c
+ sigv.c\
+ wildmatch.c
 
 if DIREVENT_INOTIFY
   direvent_SOURCES += ev_inotify.c detach-std.c

@@ -26,6 +26,7 @@
 #include <regex.h>
 #include <grecs/list.h>
 #include <grecs/symtab.h>
+#include <envop.h>
 #include "gettext.h"
 
 #define _(s) gettext(s)
@@ -141,13 +142,12 @@ struct prog_handler {
 	gid_t *gidv;   /* Run with these groups' privileges */
 	size_t gidc;   /* Number of elements in gidv */
 	unsigned timeout; /* Handler timeout */
-	char **env;    /* Environment */
+	envop_t *envop;   /* Environment setup program */
 };
 
 struct handler *prog_handler_alloc(event_mask ev_mask, filpatlist_t fpat,
 				   struct prog_handler *p);
 void prog_handler_free(struct prog_handler *);
-size_t prog_handler_envrealloc(struct prog_handler *hp, size_t count);
 
 
 extern int foreground;
@@ -164,6 +164,7 @@ extern int stop;
 
 extern pid_t self_test_pid;
 extern int exit_code;
+extern envop_t *direvent_envop;
 
 
 void nomem_abend(void);
@@ -245,7 +246,8 @@ void watchpoint_destroy(struct watchpoint *dwp);
 int watchpoint_install_sentinel(struct watchpoint *dwp);
 int watchpoint_attach_directory_sentinel(struct watchpoint *wpt);
 
-int watch_pathname(struct watchpoint *parent, const char *dirname, int isdir, int notify);
+int watch_pathname(struct watchpoint *parent, const char *dirname, int isdir,
+		   int notify);
 
 char *split_pathname(struct watchpoint *dp, char **dirname);
 void unsplit_pathname(struct watchpoint *dp);
@@ -289,7 +291,6 @@ size_t handler_list_size(handler_list_t hlist);
 struct process *process_lookup(pid_t pid);
 void process_cleanup(int expect_term);
 void process_timeouts(void);
-char **environ_setup(char **hint, char **kve);
 
 #define NITEMS(a) ((sizeof(a)/sizeof((a)[0])))
 struct sigtab {
@@ -312,3 +313,5 @@ int filpatlist_match(filpatlist_t fp, const char *name);
 int filpatlist_is_empty(filpatlist_t fp);
 
 void close_fds(int minfd);
+
+int parse_legacy_env(char **argv, envop_t **envop);

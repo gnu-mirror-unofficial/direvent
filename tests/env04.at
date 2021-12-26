@@ -14,8 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with Direvent.  If not, see <http://www.gnu.org/licenses/>.
 
-AT_SETUP([keep])
-AT_KEYWORDS([environ env01 env_keep])
+AT_SETUP([eval])
+AT_KEYWORDS([environ env04 env_eval])
 
 AT_DIREVENT_TEST([
 debug 10;
@@ -23,16 +23,20 @@ watcher {
 	path $cwd/dir;
 	event create;
         environ {
-		clear;
-		keep DIREVENT_FILE;
+	      eval "\${FOO:=\$BAR}";
+	      eval "\${BAZ:=qux}";
 	};
-	command "$TESTDIR/envdump -AD -f $outfile -k\$self_test_pid";
+	command "$TESTDIR/envdump -AD -s -i FOO:BAR:BAZ -f $outfile -k\$self_test_pid";
 	option (stdout,stderr);
 }
 ],
 [touch dir/testfile],
 [outfile=$cwd/dump
 mkdir dir
+unset FOO
+BAR=bar
+BAZ=baaz
+export BAR BAZ
 ],
 [
 cat $outfile
@@ -40,40 +44,10 @@ cat $outfile
 [0],
 [# Dump of execution environment
 # Environment
-DIREVENT_FILE=testfile
+BAR=bar
+BAZ=baaz
+FOO=bar
 # End
 ])
-
-AT_DIREVENT_TEST([
-debug 10;
-watcher {
-	path $cwd/dir;
-	event create;
-        environ {
-		clear;
-		keep "DIREVENT_*" MYVAR;
-	};
-	command "$TESTDIR/envdump -AD -s -i DIREVENT_FILE=:DIREVENT_GENEV_:MYVAR -f $outfile -k\$self_test_pid";
-	option (stdout,stderr);
-}
-],
-[touch dir/testfile1],
-[outfile=$cwd/dump
-MYVAR=foo
-export MYVAR
-],
-[
-cat $outfile
-],
-[0],
-[# Dump of execution environment
-# Environment
-DIREVENT_FILE=testfile1
-DIREVENT_GENEV_CODE=1
-DIREVENT_GENEV_NAME=create
-MYVAR=foo
-# End
-])
-
 
 AT_CLEANUP
