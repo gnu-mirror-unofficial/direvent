@@ -363,26 +363,27 @@ open_logger(const char *tag, int prio, struct process **return_proc)
 
 extern char **environ;    /* Environment */
 
-static struct defenv {
-	char *name;
-	char *value;
-} defenv[] = {
-	{ "DIREVENT_SYSEV_CODE", "${sysev_code}" },
-	{ "DIREVENT_SYSEV_NAME", "${sysev_name}" },
-	{ "DIREVENT_GENEV_CODE", "${genev_code}" },
-	{ "DIREVENT_GENEV_NAME", "${genev_name}" },
-	{ "DIREVENT_FILE", "${file}" },
-	{ NULL }
+enum {
+	ENV_FILE,
+	ENV_SYSEV_CODE,
+	ENV_SYSEV_NAME,
+	ENV_GENEV_CODE,
+	ENV_GENEV_NAME,
+	ENV_SELF_TEST_PID,
+	DEFENV_COUNT
 };
 
-static char *internalvars[] = {
-	"sysev_code",
-	"sysev_name",
-	"genev_code",
-	"genev_name",
-	"file",
-	"self_test_pid",
-	NULL
+static struct defenv {
+	char *macro_name;
+	char *envar_name;
+	char *value;
+} defenv[DEFENV_COUNT] = {
+	[ENV_FILE]       = { "file", "DIREVENT_FILE" },
+	[ENV_SYSEV_CODE] = { "sysev_code", "DIREVENT_SYSEV_CODE" },
+	[ENV_SYSEV_NAME] = { "sysev_name", "DIREVENT_SYSEV_NAME" },
+	[ENV_GENEV_CODE] = { "genev_code", "DIREVENT_GENEV_CODE" },
+	[ENV_GENEV_NAME] = { "genev_name", "DIREVENT_GENEV_NAME" },
+	[ENV_SELF_TEST_PID] = { "self_test_pid", "DIREVENT_SELF_TEST_PID" },
 };
 
 int
@@ -398,21 +399,18 @@ parse_legacy_env(char **argv, envop_t **envop)
 			return -1;
 		i++;
 
-		for (j = 0; internalvars[j]; j++) {
+		for (j = 0; j < DEFENV_COUNT; j++) {
 			if (envop_entry_add(envop, envop_keep,
-					    internalvars[j], NULL))
+					    defenv[j].macro_name, NULL))
 				return -1;
 		}
 		
 		if (argv[0][1] == 0) {
-			for (j = 0; defenv[j].name; j++) {
+			for (j = 0; j < DEFENV_COUNT; j++) {
 				if (envop_entry_add(envop, envop_keep,
-						    defenv[j].name, NULL))
+						    defenv[j].envar_name, NULL))
 					return -1;
 			}
-			if (envop_entry_add(envop, envop_keep,
-					    "DIREVENT_SELF_TEST_PID", NULL))
-				return -1;
 		}
 	}
 	for (; (name = argv[i]) != NULL; i++) {
@@ -509,6 +507,27 @@ debug_environ(int lev, environ_t *env, char *text)
 	}
 }
 
+static int
+runcmd_getmacro(char **ret, const char *var, size_t len, void *clos)
+{
+	int i;
+	struct defenv *de = clos;
+
+	for (i = 0; i < DEFENV_COUNT; i++, de++) {
+		if (len == strlen(de->macro_name) &&
+		    memcmp(var, de->macro_name, len) == 0) {
+			if (de->value) {
+				if ((*ret = strdup(de->value)) == NULL)
+					return WRDSE_NOSPACE;
+			} else {
+				*ret = NULL;
+			}
+			return WRDSE_OK;
+		}
+	}
+	return WRDSE_UNDEF;
+}
+
 static void
 runcmd(struct prog_handler *hp, event_mask *event, const char *file)
 {
@@ -517,99 +536,85 @@ runcmd(struct prog_handler *hp, event_mask *event, const char *file)
 	environ_t *env;
 	char *xargv[4];
 	struct wordsplit ws;
+	int wsflags;
 	int i;
+
+	/*
+	 * Fill in the default environment and macro variable values.
+	 */
 	
-	enum {
-		ENV_FILE,
-		VAL_FILE,
-
-		ENV_SYSEV_CODE,
-		VAL_SYSEV_CODE,
-
-		ENV_GENEV_CODE,
-		VAL_GENEV_CODE,
-
-		ENV_SYSEV_NAME,
-		VAL_SYSEV_NAME,
-
-		ENV_GENEV_NAME,
-		VAL_GENEV_NAME,
-
-		ENV_SELF_TEST_PID,
-		VAL_SELF_TEST_PID,
-
-		ENV_NULL,
-		KVE_COUNT
-	};
-	char *kve[KVE_COUNT];
-		
-	kve[ENV_FILE] = "file";
-	kve[VAL_FILE] = (char*) file;
+	defenv[ENV_FILE].value = (char*) file;
 	
 	snprintf(buf, sizeof buf, "%d", event->sys_mask);
-	kve[ENV_SYSEV_CODE] = "sysev_code";
-	kve[VAL_SYSEV_CODE] = estrdup(buf);
+	defenv[ENV_SYSEV_CODE].value = estrdup(buf);
 
 	snprintf(buf, sizeof buf, "%d", event->gen_mask);
-	kve[ENV_GENEV_CODE] = "genev_code";
-	kve[VAL_GENEV_CODE] = estrdup(buf);
+	defenv[ENV_GENEV_CODE].value = estrdup(buf);
 
-	if (ev_format(*event, &kve[VAL_GENEV_NAME], &kve[VAL_SYSEV_NAME]))
+	if (ev_format(*event,
+		      &defenv[ENV_GENEV_NAME].value,
+		      &defenv[ENV_SYSEV_NAME].value))
 		nomem_abend();
-
-	kve[ENV_GENEV_NAME] = "genev_name";
-	kve[ENV_SYSEV_NAME] = "sysev_name";
 
 	if (self_test_pid) {
 		snprintf(buf, sizeof buf, "%lu", (unsigned long)self_test_pid);
-		kve[ENV_SELF_TEST_PID] = "self_test_pid";
-		kve[VAL_SELF_TEST_PID] = estrdup(buf);
-	} else
-		kve[ENV_SELF_TEST_PID] = NULL;
-	
-	kve[ENV_NULL] = NULL;
+		defenv[ENV_SELF_TEST_PID].value = estrdup(buf);
+	}
 
+	/*
+	 * Initialize the environment.
+	 */
 	env = environ_create(environ);
-	for (i = 0; kve[i]; i += 2)
-		environ_set(env, kve[i], kve[i+1]);
-		
-	for (i = 0; defenv[i].name; i++) {
-		environ_set(env, defenv[i].name, defenv[i].value);
-	}	
-	if (self_test_pid)
-		environ_set(env, "DIREVENT_SELF_TEST_PID",
-			    kve[VAL_SELF_TEST_PID]);
-	
+	for (i = 0; i < DEFENV_COUNT; i++) {
+		environ_set(env, defenv[i].envar_name, defenv[i].value);
+		/*
+		 * NOTE: Version 5.2 macro names are temporarily defined as
+		 * environment variables so that they be properly expanded
+		 * by the envop_exec calls below.
+		 */
+		environ_set(env, defenv[i].macro_name, defenv[i].value);
+	}
+
+	/*
+	 * Modify it according to the "environ" configuration statements.
+	 */
 	if (envop_exec(direvent_envop, env) || envop_exec(hp->envop, env)) {
 		diag(LOG_CRIT, "envop_exec failed: %s", strerror(errno));
 		_exit(127);
 	}
-	if (!(hp->flags & HF_SHELL)) {
-		for (i = 0; kve[i]; i += 2) {
-			environ_unset(env, kve[i], kve[i+1]);
-		}
-	}
 	
+	/* Unset macro names.  See the NOTE above. */
+ 	for (i = 0; i < DEFENV_COUNT; i++)
+		environ_unset(env, defenv[i].macro_name, NULL);
+
 	debug_environ(4, env, "modified environment");
 
+	ws.ws_getvar = runcmd_getmacro;
+	ws.ws_closure = defenv;
+	wsflags = WRDSF_NOCMD | WRDSF_QUOTE
+		| WRDSF_SQUEEZE_DELIMS | WRDSF_CESCAPES
+		| WRDSF_GETVAR | WRDSF_CLOSURE | WRDSF_KEEPUNDEF;
+	if (hp->flags & HF_SHELL) {
+		wsflags |= WRDSF_NOSPLIT;
+	} else {
+		ws.ws_env = (const char **) environ_ptr(env);
+		wsflags |= WRDSF_ENV;
+	}
+	if (wordsplit(hp->command, &ws, wsflags)) {
+		diag(LOG_CRIT, "wordsplit: %s",
+		     wordsplit_strerror(&ws));
+		_exit(127);
+	}
+	
 	if (hp->flags & HF_SHELL) {
 		xargv[0] = (char*) environ_get(env, "SHELL");
 		if (!xargv[0])
 			xargv[0] = "/bin/sh";
 		xargv[1] = "-c";
-		xargv[2] = hp->command;
+		xargv[2] = ws.ws_wordv[0];
 		xargv[3] = NULL;
 		argv = xargv;
 	} else {
-		ws.ws_env = (const char **) kve;
-		if (wordsplit(hp->command, &ws,
-			      WRDSF_NOCMD | WRDSF_QUOTE
-			      | WRDSF_SQUEEZE_DELIMS | WRDSF_CESCAPES
-			      | WRDSF_ENV | WRDSF_ENV_KV)) {
-			diag(LOG_CRIT, "wordsplit: %s",
-			     wordsplit_strerror(&ws));
-			_exit(127);
-		}
 		argv = ws.ws_wordv;
 	}
 
@@ -759,8 +764,4 @@ prog_handler_alloc(event_mask ev_mask, filpatlist_t fpat,
 	memset(p, 0, sizeof(*p));
 	return hp;
 }
-
-
-
-
 		

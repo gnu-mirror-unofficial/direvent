@@ -616,7 +616,6 @@ cb_global_environ(enum grecs_callback_command cmd, grecs_node_t *node,
 		  void *varptr, void *cb_data)
 {
 	grecs_locus_t *locus = &node->locus;
-	grecs_value_t *value = node->v.value;
 	envop_t **envop_ptr = &direvent_envop;
 
 	switch (cmd) {
@@ -628,7 +627,8 @@ cb_global_environ(enum grecs_callback_command cmd, grecs_node_t *node,
 		break;
 		
 	case grecs_callback_set_value:
-		return _cb_env(envop_ptr, value, locus);
+		grecs_error(locus, 0, "%s",
+			    _("legacy environ syntax is not allowed in global context"));
 	}
 	return 0;
 }
@@ -846,11 +846,11 @@ static struct grecs_keyword watcher_kw[] = {
 	{ "option", NULL, N_("List of additional options"),
 	  grecs_type_string, GRECS_LIST, NULL, 0,
 	  cb_option },
-	{"environ", NULL,
-	 N_("Modify program environment."),
-	 grecs_type_section, GRECS_DFLT,
-	 NULL, 0,
-	 cb_environ, NULL, cb_env_keywords },
+	{ "environ", NULL,
+	  N_("Modify program environment."),
+	  grecs_type_section, GRECS_DFLT,
+	  NULL, 0,
+	  cb_environ, NULL, cb_env_keywords },
 	{ "environ", N_("<arg: string> <arg: string>..."),
 	  N_("Modify environment (legacy form)"),
 	  grecs_type_string, GRECS_DFLT, NULL, 0,
@@ -882,7 +882,7 @@ static struct grecs_keyword direvent_kw[] = {
 	
 
 void
-config_help()
+config_help(void)
 {
 	static char docstring[] =
 		N_("Configuration file structure for direvent.\n"
