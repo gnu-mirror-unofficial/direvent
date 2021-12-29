@@ -1,0 +1,12 @@
+GNU=http://www.gnu.org/software
+SED=${GNU}/sed/manual
+sed		mono	${SED}/sed.html
+sed		node	${SED}/html_node/
+
+fnmatch(3)	mono	https://man.gnu.org.ua/3/fnmatch
+inotify(7)	mono	https://man.gnu.org.ua/7/inotify
+sysctl(8)	mono	https://man.gnu.org.ua/8/sysctl
+kqueue(2)	mono	https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+revoke(2)	mono	https://www.freebsd.org/cgi/man.cgi?query=revoke&sektion=2
+
+

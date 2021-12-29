@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License along
 .\" with direvent. If not, see <http://www.gnu.org/licenses/>.
-.TH DIREVENT.CONF 5 "June 20, 2016" "DIREVENT" "Direvent User Reference"
+.TH DIREVENT.CONF 5 "December 29, 2021" "DIREVENT" "Direvent User Reference"
 .SH NAME
 direvent.conf \- configuration file for
 .BR direvent (8).
@@ -154,7 +154,7 @@ with a single character according to the following rules:
 	\fB\\b\fR	backspace	010
 	\fB\\f\fR	form-feed	014
 	\fB\\n\fR	new line	012
-	\fB\\r\fR	charriage return	015
+	\fB\\r\fR	carriage return	015
 	\fB\\t\fR	horizontal tabulation	011
 	\fB\\v\fR	vertical tabulation	013
 .fi
@@ -172,18 +172,6 @@ physical lines, e.g.:
 .sp
 If the character following a backslash is not one of those specified
 above, the backslash is ignored and a warning is issued.
-
-Two or more adjacent quoted strings are concatenated, which gives
-another way to split long strings over several lines to improve
-readability.  The following fragment produces the same result as the
-example above:
-.sp
-.nf
-.in +4
-"a long string may be"
-" split over several lines"
-.in
-.fi
 .TP
 .I Here-document
 A \fIhere-document\fR is a special construct that allows to introduce
@@ -283,17 +271,45 @@ watcher {
 .sp
 The closing curly brace may be followed by a semicolon, although
 this is not required.
-.SH MACRO EXPANSION
-Arguments of some statements undergo macro expansion before use.
-During the macro expansion any occurrence of \fB${NAME}\fR is replaced
-by the value of macro \fBNAME\fR.  Macro names follow the usual
-convention: they begin with a letter and contain letters digits and
-underscores.  The curly braces around the \fBNAME\fR are optional.
-They are required only if the macro reference is followed by a
-character that is not to be interpreted as part of its name, as in
-\fB${command}string\fR.
+.SH VARIABLE EXPANSION
+Arguments of some statements undergo variable expansion before use.
+During variable expansion, \fIvariable references\fR found in string
+are replaced with the actual values of the corresponding variables.
 .PP
-The following macros are defined:
+A variable reference has the form \fB$\fIVAR\fR or \fB${\fIVAR\fB}\fR,
+where \fIVAR\fR is the variable name.  The two forms are entirely
+equivalent.  The form with curly braces is normally used if the
+variable name is immediately followed by an alphanumeric symbol, which
+will otherwise be considered part of it.  This form also allows for
+specifying the action to take if the variable is undefined or expands
+to an empty value:
+.TP
+\fB${\fIVARIABLE\fB:-\fIWORD\fB}\fR
+.IR "Use Default Values" .
+If \fIVARIABLE\fR is unset or null, the expansion of \fIWORD\fR is
+substituted.  Otherwise, the value of \fIVARIABLE\fR is substituted.
+.TP
+\fB${\fIVARIABLE\fB:=\fIWORD\fB}\fR
+.IR "Assign Default Values" .
+If \fIVARIABLE\fR is unset or null, the expansion of \fIWORD\fR is
+assigned to the variable.  The value of \fIVARIABLE\fR is then substituted.
+.TP
+\fB${\fIVARIABLE\fB:?\fIWORD\fB}\fR
+.IR "Display Error if Null or Unset" .
+If \fIVARIABLE\fR is null or unset, the expansion of \fIWORD\fR (or a
+message to that effect if \fIWORD\fR is not present) is output to the
+current logging channel.  Otherwise, the value of \fIVARIABLE\fR is
+substituted. 
+.TP
+\fB${\fIVARIABLE\fB:+\fIWORD\fB}\fR
+.IR "Use Alternate Value" .
+If \fIVARIABLE\fR is null or unset, nothing is substituted, otherwise
+the expansion of \fIWORD\fR is substituted. 
+.PP
+Two kinds of variables take part in variable expansion: environment
+variables and \fImacro variables\fR.  The latter are special
+variable-like entities defined by \fBdirevent\fR to carry
+information about the event and its target file:
 .TP
 .B file
 Name of the file covered by the event.
@@ -303,9 +319,10 @@ Generic (system-independent) event code.  It is a bitwise \fBOR\fR of
 the event codes represented as a decimal number.
 .TP
 .B genev_name
-Generic event name.  If several generic events are reported simultaneously, the
-value of this variable is a list of event names separated by space
-characters.  Each name corresponds to a bit in \fBgenev_code\fR.
+Generic event name.  If several generic events are reported
+simultaneously, the value of this variable is a list of event names
+separated by space characters.  Each name corresponds to a bit in
+\fBgenev_code\fR.
 .TP
 .B self_test_pid
 The PID of the external command started with the
@@ -391,6 +408,81 @@ syslog {
 }
 .in
 .fi
+.SH ENVIRONMENT
+By default the command inherits the environment of \fBdirevent\fR
+augmented with the following variables:
+.TP
+.B DIREVENT_SYSEV_CODE
+The system-dependent event code (see the \fBsysev_code\fR macro variable).
+.TP
+.B DIREVENT_SYSEV_NAME
+The system-dependent event name or names (see the \fBsysev_name\fR
+macro variable).
+.TP
+.B DIREVENT_GENEV_CODE
+The generic event code (see the \fBgenev_code\fR macro variable).
+.TP
+.B DIREVENT_GENEV_NAME
+The generic event name or names (see the \fBgenev_name\fR macro variable).
+.TP
+.B DIREVENT_FILE
+The name of the affected file relative to the current working directory
+(see the \fBfile\fR macro variable).
+.PP
+This environment can be further modified, using the \fBenviron\fR
+configuration statement:
+.sp
+.nf
+.in +2
+.B environ {
+.in +4
+.B clear;
+.BI "keep " PATTERN ;
+.BI "keep\(dq" NAME = VALUE \(dq;
+.BI "set \(dq" NAME = VALUE \(dq;
+.BI "eval " EXPR ;
+.BI "unset " PATTERN ;
+.BI "unset \(dq" NAME = VALUE \(dq;
+.in -4
+.B }
+.in
+.fi
+.PP
+Statements inside the \fBenviron\fR block define operations that
+modify the environment.  Their arguments undergo variable expansion.
+The \fBclear\fR statement is executed first.  Then, \fBkeep\fR
+statements are applied, in order of their appearance.  Finally,
+\fBset\fR and \fBunset\fR statements are applied in order of their
+appearance in the configuration.
+.TP
+.B clear
+Clears the environment by removing (unsetting) all variables, except
+those listed in \fBkeep\fR statements, if such are given (see below).
+This statement is always executed first.
+.TP
+.BI keep " PATTERN"
+Declares variables matching \fIPATTERN\fR (a globbing pattern) as
+exempt from clearing.  This statement implies \fBclear\fR.
+.TP
+\fBkeep\fR \(dq\fINAME\fB=\fIVALUE\fR\(dq
+Retains \fINAME\fR in the environment only if it has the value
+\fIVALUE\fR.  Notice double-quotes.
+.TP
+\fBset\fR \(dq\fINAME\fB=\fIVALUE\fR\(dq
+Assigns \fIVALUE\fR to the environment variable \fINAME\fR.  The value is
+subject to variable expansion using the same syntax as in shell.
+The \fBset\fR, \fBeval\fR, and \fBunset\fR (see below) statements are
+executed in order of their appearance.
+.TP
+.BI eval " EXPR"
+Perform variable expansion on \fIEXPR\fR and discard the result.  This
+is useful for side-effects.
+.TP
+.BI unset " PATTERN"
+Unset environment variables matching \fIPATTERN\fR.
+.TP
+\fBunset\fR \(dq\fINAME\fB=\fIVALUE\fR\(dq
+Unset environment variable \fINAME\fR if it has the given \fIVALUE\fR.
 .SH WATCHER
 The \fBwatcher\fR statement configures a single event watcher.  A watcher can
 control several events in multiple pathnames.  Any number of \fBwatcher\fR
@@ -408,7 +500,7 @@ a separate watcher.
 .BI "user " NAME ;
 .BI "timeout " NUMBER ;
 .BI "option " STRING\-LIST ;
-.BI "environ " ENV\-SPEC ;
+.BI "environ {" ENV\-SPEC "}"
 .in -4
 .B }
 .in
@@ -457,7 +549,7 @@ file names that don't match the pattern without \fB!\fR.
 \fBevent\fR \fISTRING\-LIST\fR;
 Configures the filesystem events to watch for in the directories declared by
 the \fBpath\fR statements.  The argument is a list of event names.  Both
-generic and system-dependent event namess are allowed.  Multiple
+generic and system-dependent event names are allowed.  Multiple
 \fBevent\fR statements accumulate.
 .
 A missing \fBevent\fR statements means watch all events.
@@ -506,7 +598,7 @@ A list of additional options.  The following options are defined:
 .RS +16
 .TP
 .B shell
-Invoke the handler command as \fB/bin/sh -c "\fIcommand\fB"\fR.
+Invoke the handler command as \fB$SHELL -c "\fIcommand\fB"\fR.
 .TP
 .B wait
 Wait for the program to terminate before handling next event from
@@ -521,92 +613,15 @@ Capture the standard error of the command and redirect it to the
 \fBsyslog\fR with the \fBLOG_ERR\fR priority.
 .RE
 .TP
-\fBenviron\fR \fIENV\-SPEC\fR;
-Modify command environment.  By default the command inherits the environment
-of \fBdirevent\fR augmented with the following variables:
-.RS +10
-.TP
-.B DIREVENT_SYSEV_CODE
-The system-dependent event code (see the \fB${sysev_code}\fR variable).
-.TP
-.B DIREVENT_SYSEV_NAME
-The system-dependent event name or names (see the \fB${sysev_name}\fR variable).
-.TP
-.B DIREVENT_GENEV_CODE
-The generic event code (see the \fB${genev_code}\fR variable).
-.TP
-.B DIREVENT_GENEV_NAME
-The generic event name or names (see the \fB${genev_name}\fR variable).
-.TP
-.B DIREVENT_FILE
-The name of the affected file relative to the current working directory
-(see the \fB${file}\fR variable).
-.RE
-.IP
-The \fBenviron\fR statement allows for trimming the environment.  Its
-argument is a list of one or more of the folloeing environment modification
-directives:
-.RS +10
-.TP
-.BR \- " (a single dash)"
-Clear the inherited environment, but retain the variables added by
-\fBdirevent\fR.  The removed environment variables can be selectively
-restored by the directives that follow.  This must be the first directive
-in the list.
-.TP
-.BR \-\- " (double-dash)"
-Clear the entire environment, including the variables added by
-\fBdirevent\fR.  This must be the first directive in the list.
-.TP
-.BI \- NAME
-Unset the variable \fINAME\fR.
-.TP
-.BI \- NAME = VAL
-Unset the environment variable \fINAME\fR only if its value is \fIVAL\fR.
-.TP
-.I NAME
-Restore the environment variable \fINAME\fR.  This directive is useful
-after \fB\-\fR or \fB\-\-\fR to retain some variables from the environment.
-.TP
-.BI "" NAME = VALUE
-Define environment variable \fINAME\fR to the \fIVALUE\fR.  \fIVALUE\fR can
-contain macro variables, which will be expanded prior to the assignment.
-.TP
-.BI "" NAME += VALUE
-Retain the variable \fINAME\fR and append \fIVALUE\fR to its existing value.
-If no such variable is present in the environment, it will be created and
-assigned the \fBVALUE\fR.  If \fBVALUE\fR begins with a punctuation
-character, this character is removed from it before the assignment.  This
-is convenient  for using this construct with environment variables like
-\fBPATH\fR, e.g.:
-.RS
-.sp
-.nf
-.in +4
-PATH+=:/sbin
-.in
-.fi
-.RE
-.IP
-In this example, if \fBPATH\fR exists, \fB:/sbin\fR will be appended
-to it.  Otherwise, it will be created and assigned the value \fB/sbin\fR.
-.IP
-The \fIVALUE\fR can contain macro variables, which will be expanded prior
-to the assignment. 
-.TP
-.BI ""  NAME =+ VALUE
-Retain the variable \fINAME\fR and prepend \fIVALUE\fR to its existing value.
-If no such variable is present in the environment, it will be created and
-assigned the \fIVALUE\fR.  In this case, if \fIVALUE\fR ends with a
-punctuation character, this character will be removed from it before
-the assignment.
-.IP
-The \fIVALUE\fR can contain macro variables, which will be expanded prior
-to the assignment. 
+.BI "environ {" ENV\-SPEC "}"
+Modify command environment.  See the section \fIENVIRONMENT\fR, for a
+discussion of sub-statements in \fIENV\-SPEC\fR.  This statement
+applies to the environment, modified by the global \fBenviron\fR
+statement, if any.
 .SH "SEE ALSO"
 .BR direvent (8).
 .SH COPYRIGHT
-Copyright \(co 2012, 2013 Sergey Poznyakoff
+Copyright \(co 2012\-2021 Sergey Poznyakoff
 .br
 .na
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>

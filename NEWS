@@ -1,8 +1,56 @@
-direvent -- history of user-visible changes. 2019-07-13
+direvent -- history of user-visible changes. 2021-12-29
 Copyright (C) 2012-2021 Sergey Poznyakoff
 See the end of file for copying conditions.
 
 Please send direvent bug reports to <bug-direvent@gnu.org.ua>
+
+Version 5.2.90 (git)
+
+* Introduce compound events
+
+The "change" event is implemented on GNU/Linux and FreeBSD.  This
+event is delivered when a file was modified and closed.
+
+* New configuration statement for manipulating the environment.
+
+The "environ" statement is now a compound statement. It can contain
+five kinds of substatements: "clear" to clear the environment, "keep"
+to retain certain variables while clearing the environment, "set" to
+set a variable, "unset" to unset a variable or variables, and "eval"
+to evaluate a variable reference for side effects.
+
+Both "keep" and "unset" can take globbing pattern as their argument,
+in which case they affect all variables matching that pattern. 
+
+The value part in the "set" statement is subject to variable
+expansion.
+
+The "environ" block can appear in global context as well.  In this
+case it applies to all watchers.
+
+The support for the old one-line "environ" syntax is retained for
+backward compatibility.
+
+* Variable expansion in arguments to some configuration statements.
+
+Both macro and environment variables are expanded in arguments to all
+substatements of the new "environ" block statement and in the argument
+to the "command" statement.  In the latter case, expansion of the
+environment variables is controlled by the "shell" option.  If the
+option is set, the variable will be expanded by the shell.  Otherwise,
+they are expanded by direvent prior to invoking the command.
+
+* Rewrite the recursive watching support
+
+In particular, this fixes the bug where recursive watchers silently
+assumed that the "create" generic event was configured for the
+watcher.
+
+* Change interface for bulk closing of file descriptors
+
+To speed up launching of the user commands, system-dependent
+interfaces for closing the file descriptors above the given one are
+used, if available.
 
 Version 5.2, 2019-07-13
 

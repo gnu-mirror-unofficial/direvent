@@ -15,12 +15,12 @@
 # along with Direvent.  If not, see <http://www.gnu.org/licenses/>.
 
 AC_PREREQ([2.69])
-AC_INIT([GNU Direvent], [5.2], [bug-direvent@gnu.org.ua], [direvent],
+AC_INIT([GNU Direvent], [5.2.90], [bug-direvent@gnu.org.ua], [direvent],
         [http://www.gnu.org.ua/software/direvent])
 AC_CONFIG_SRCDIR([src/direvent.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([1.11.5 gnits tar-ustar silent-rules])
+AM_INIT_AUTOMAKE([1.15 gnits tar-ustar silent-rules std-options])
 
 # Enable silent rules by default:
 AM_SILENT_RULES([yes])
@@ -104,7 +104,7 @@ AM_ICONV
 AM_GNU_GETTEXT([external], [need-formatstring-macros])
 AM_GNU_GETTEXT_VERSION([0.18])
 
-AC_SUBST(INCLUDE_PATH_ARGS,['$(pkgdatadir)/$(VERSION):$(pkgdatadir)/include'])
+AC_SUBST(INCLUDE_PATH_ARGS,['$(pkgdatadir)/include:$(pkgdatadir)/$(VERSION)'])
 AC_ARG_WITH([include-path],
             [AC_HELP_STRING([--with-include-path=PATH],
 	         [set direvent runtime include path])],

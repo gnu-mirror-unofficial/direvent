@@ -3,14 +3,19 @@
 src/cmdline.h
 src/config.c
 src/direvent.c
-src/environ.c
+src/ev_inotify.c
+src/ev_kqueue.c
+src/fnpat.c
 src/progman.c
 src/watcher.c
 
+grecs/src/assert.c
+grecs/src/cidr.c
 grecs/src/format.c
+grecs/src/grecs-lex.l
+grecs/src/lineacc.c
 grecs/src/opthelp.c
 grecs/src/path-parser.c
-grecs/src/preproc.c
 grecs/src/symtab.c
 grecs/src/tree.c
 grecs/wordsplit/wordsplit.c
