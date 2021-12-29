@@ -449,7 +449,7 @@ ev_format(event_mask ev, char **gen, char **sys)
 	if (sys) {
 		if ((*sys = flags_format(ev.sys_mask, sysev_transtab,
 					 &sys_size)) == NULL) {
-			free(gen);
+			free(*gen);
 			*gen = NULL;
 			r = -1;
 		}
