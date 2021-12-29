@@ -1,4 +1,4 @@
-# This file is part of Direvent -*- autoconf -*-
+# This file is part of Direvent
 # Copyright (C) 2012-2021 Sergey Poznyakoff
 #
 # Direvent is free software; you can redistribute it and/or modify
@@ -27,16 +27,16 @@ EXTRA_DIST = \
 clean-local:
 	@rm -rf manual
 
-GENDOCS=$(srcdir)/gendocs.sh --no-copy-images --html '--init-file=$(abs_srcdir)/html.init'
-
-TEXI2DVI=texi2dvi -t '@set $(RENDITION)'
+GENDOCS = perl gendocs.pl
 
 .PHONY: manual
 manual:
+	rm -rf manual
 	TEXINPUTS=$(srcdir):$(top_srcdir)/build-aux:$(TEXINPUTS) \
 	 MAKEINFO="$(MAKEINFO) $(MAKEINFOFLAGS) $(AM_MAKEINFOFLAGS)" \
-	 TEXI2DVI="$(TEXI2DVI)" \
-	 $(GENDOCS) $(PACKAGE) '$(PACKAGE_NAME) manual'
+	 $(GENDOCS) -C manual -o otherdoc.texi $(PACKAGE) otherdoc.texi.in
+	$(MAKEINFO) $(AM_MAKEINFOFLAGS) $(MAKEINFOFLAGS) -DWEBDOC \
+	   --html --init-file=webdoc.init $(info_TEXINFOS) -o manual
 
 manual.tar.bz2: manual
 	tar cfj manual.tar.bz2 manual

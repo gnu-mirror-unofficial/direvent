@@ -70,7 +70,6 @@ documents GNU Direvent Version @value{VERSION}.
 @end ifnottex
 
 @menu
-
 * Intro::                   Introduction.
 * Overview::
 * Quick start::
@@ -84,8 +83,36 @@ Appendices
 * environ legacy syntax::   Legacy Syntax of the @code{environ} Statement
 * Copying This Manual::     The GNU Free Documentation License.
 * Concept Index::           Index of Concepts.
+@ifset WEBDOC
+@ifhtml
+* This Manual in Other Formats::
+@end ifhtml
+@end ifset
 
 @detailmenu
+ --- The Detailed Node Listing ---
+
+Configuration
+
+* syntax::
+* variable expansion::
+* general settings::
+* syslog::
+* environ::
+* watcher::
+
+Configuration Syntax
+
+* Comments::
+* Pragmatic Comments::
+* Statements::
+
+System Dependencies
+
+* linux::     GNU/Linux systems.
+* bsd::       BSD systems.
+* darwin::    Darwin (Mac OS X).
+
 @end detailmenu
 @end menu
 
@@ -560,8 +587,8 @@ the standard include search path is scanned.  It is defined at the
 compile time and by default consists of two directories:
 
 @itemize @bullet
-@item @file{@var{prefix}/share/direvent/@value{VERSION}/include}
 @item @file{@var{prefix}/share/direvent/include}
+@item @file{@var{prefix}/share/direvent/@value{VERSION}/include}
 @end itemize
 
 @noindent
@@ -828,12 +855,6 @@ separated by space characters.  Each name corresponds to a bit in
 @samp{$genev_code}.
 @end defvr
 
-@defvr {macro variable} self_test_pid
-The PID of the external command started with the @option{--self-test}
-option (@pxref{self-test mode}).  If @command{direvent} is started
-without this option, this variable is not defined.
-@end defvr
-
 @anchor{sysev_code}
 @defvr {macro variable} sysev_code
 A system-dependent event code.  It is a bitwise OR of the event codes
@@ -846,6 +867,12 @@ A system-dependent event name.  If several events are reported, the
 value of this variable is a list of event names separated by space
 characters.  Each name corresponds to a bit in @samp{sysev_code}.
 @xref{System dependencies}, for a list of system-dependent event names.
+@end defvr
+
+@defvr {macro variable} self_test_pid
+The PID of the external command started with the @option{--self-test}
+option (@pxref{self-test mode}).  If @command{direvent} is started
+without this option, this variable is not defined.
 @end defvr
 
 Statements whose arguments undergo variable expansion are:
@@ -910,8 +937,8 @@ Upon successful startup store the PID of the daemon process in @var{file}.
 @end deffn
 
 @deffn {Config} debug @var{number}
-Set debug level.  Valid @var{number} values are @samp{0} (no debug) to @samp{3}
-(maximum verbosity).
+Set debug level.  Valid @var{number} values are @samp{0} (no debug)
+through @samp{4} (maximum verbosity).
 @end deffn
 
 @node syslog
@@ -1653,8 +1680,6 @@ environ @{
 @end example
 @end table
 
-
-
 @node Copying This Manual
 @appendix GNU Free Documentation License
 @include fdl.texi
@@ -1665,6 +1690,14 @@ environ @{
 This is a general index of all issues discussed in this manual
 
 @printindex cp
+
+@ifset WEBDOC
+@ifhtml
+@node This Manual in Other Formats
+@unnumbered This Manual in Other Formats
+@include otherdoc.texi
+@end ifhtml
+@end ifset
 
 @bye
 
