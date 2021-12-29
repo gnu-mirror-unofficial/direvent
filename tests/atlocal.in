@@ -1,5 +1,5 @@
 # @configure_input@                                     -*- shell-script -*-
-# Configurable variable values for Direvent test suite.
+# Configurable variable values for GNU direvent test suite.
 # Copyright (C) 2012-2021 Sergey Poznyakoff
 
 PATH=@abs_builddir@:@abs_top_builddir@/src:@abs_top_srcdir@/build-aux:$top_srcdir:$srcdir:$PATH

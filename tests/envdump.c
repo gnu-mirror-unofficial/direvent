@@ -1,13 +1,13 @@
 /* envdump.c - dump execution environment
-   This file is part of Direvent testsuite.
+   This file is part of GNU direvent testsuite.
    Copyright (C) 2013-2021 Sergey Poznyakoff
 
-   Direvent is free software; you can redistribute it and/or modify it
+   GNU direvent is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
    Free Software Foundation; either version 3 of the License, or (at your
    option) any later version.
 
-   Direvent is distributed in the hope that it will be useful,
+   GNU direvent is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.

@@ -1,18 +1,18 @@
-# This file is part of Direvent testsuite. -*- Autotest -*-
+# This file is part of GNU direvent testsuite. -*- Autotest -*-
 # Copyright (C) 2013-2021 Sergey Poznyakoff
 #
-# Direvent is free software; you can redistribute it and/or modify
+# GNU direvent is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3, or (at your option)
 # any later version.
 #
-# Direvent is distributed in the hope that it will be useful,
+# GNU direvent is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with Direvent.  If not, see <http://www.gnu.org/licenses/>.
+# along with GNU direvent.  If not, see <http://www.gnu.org/licenses/>.
 
 AT_SETUP([Globbing pattern])
 AT_KEYWORDS([create fname glob glob01])

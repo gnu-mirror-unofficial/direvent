@@ -1,18 +1,18 @@
-/* Environment and environment operation definitions for GNU Pies.
+/* Environment and environment operation definitions for GNU direvent.
    Copyright (C) 2019-2021 Sergey Poznyakoff
 
-   GNU Pies is free software; you can redistribute it and/or modify
+   GNU direvent is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
-   GNU Pies is distributed in the hope that it will be useful,
+   GNU direvent is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GNU Pies.  If not, see <http://www.gnu.org/licenses/>. */
+   along with GNU direvent.  If not, see <http://www.gnu.org/licenses/>. */
 
 /* Environment structure */
 struct environ
