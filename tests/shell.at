@@ -30,6 +30,7 @@ watcher {
 [> dir/file],
 [outfile=$cwd/dump
 mkdir dir
+SHELL=/bin/sh
 ],
 [sed "s^$cwd^(CWD)^;s^$TESTDIR^(TESTDIR)^;/^argv\[[[0-9]]\]=-k/d" $outfile
 ],
